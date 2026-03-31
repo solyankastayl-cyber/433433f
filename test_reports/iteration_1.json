@@ -1,0 +1,47 @@
+{
+  "summary": "Completed frontend testing of timeframe chart scaling functionality. Found critical issue with 6M and 1M timeframes showing zoomed-in view instead of full period.",
+  
+  "backend_issues": {},
+  
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ResearchChart",
+        "issue": "6M and 1M timeframes show zoomed-in view (few candles) instead of full period",
+        "selector": "[data-testid='tf-6M'], [data-testid='tf-1M']",
+        "fix_priority": "HIGH",
+        "details": "When user selects 6M or 1M timeframe, chart shows only ~2 weeks of data instead of full 6 months/1 month period. 1Y timeframe works correctly showing full 2021-2026 range."
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Timeframe selection",
+        "issue": "Inconsistent zoom behavior between timeframes",
+        "affected_selectors": ["[data-testid^='tf-']"],
+        "details": "Long timeframes (1Y) use fitContent() correctly, but medium timeframes (6M, 1M) fall into wrong logic branch"
+      }
+    ]
+  },
+  
+  "passed_tests": [
+    "Frontend loads successfully",
+    "Tech Analysis view navigation works",
+    "Timeframe buttons are clickable and functional", 
+    "Chart renders with proper canvas elements",
+    "1Y timeframe shows full historical data correctly (2021-2026)",
+    "4H timeframe shows detailed recent view as expected"
+  ],
+  
+  "test_report_links": [],
+  
+  "action_item_for_main_agent": "Fix timeframe zoom logic in ResearchChart.jsx. The issue is in the longTimeframes array (line 1504) - it includes '1M' and '6M' but the actual timeframe values passed are '30D' and '180D'. Update the array to use correct internal timeframe values: ['7D', '30D', '180D', '1Y'] instead of ['7D', '30D', '180D', '1Y', '1M', '6M'].",
+  
+  "updated_files": [],
+  
+  "success_percentage": {
+    "frontend": "70% - Core functionality works, but medium timeframes have scaling issues"
+  },
+  
+  "should_call_test_agent_after_fix": "true",
+  "should_main_agent_test_itself": "false"
+}

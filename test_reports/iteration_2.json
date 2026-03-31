@@ -1,0 +1,60 @@
+{
+  "summary": "Completed comprehensive testing of timeframe chart scaling functionality. Found critical issues: missing timeframes (180D, 1Y, 4H) and incorrect scaling behavior for existing timeframes (30D, 7D).",
+  
+  "backend_issues": {},
+  
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "ResearchChart timeframe selector",
+        "issue": "Missing critical timeframes - only 3 of 6 expected timeframes are present in UI",
+        "selector": ".timeframe-selector",
+        "fix_priority": "CRITICAL",
+        "details": "UI only shows 1D, 7D, 30D buttons. Missing: 180D (6M), 1Y, 4H timeframes that were mentioned in requirements."
+      },
+      {
+        "component": "ResearchChart 30D timeframe",
+        "issue": "30D timeframe shows limited range (~3 weeks) instead of full 30-day picture",
+        "selector": "button:has-text('30D')",
+        "fix_priority": "HIGH",
+        "details": "When clicking 30D, chart shows March 8-29 (3 weeks) instead of full 30-day period. Should use fitContent() for full picture."
+      },
+      {
+        "component": "ResearchChart 7D timeframe", 
+        "issue": "7D timeframe shows excessive range (2-3 months) instead of 7 days",
+        "selector": "button:has-text('7D')",
+        "fix_priority": "HIGH",
+        "details": "When clicking 7D, chart shows March-May data (2-3 months) instead of 7-day period. Should show full picture but within 7-day context."
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Timeframe scaling logic",
+        "issue": "longTimeframes array fix not working properly - scaling behavior inconsistent",
+        "affected_selectors": ["[data-testid^='tf-']", "button:has-text('30D')", "button:has-text('7D')"],
+        "details": "The ResearchChart.jsx longTimeframes array fix appears incomplete. 30D and 7D should use fitContent() but are showing incorrect ranges."
+      }
+    ]
+  },
+  
+  "passed_tests": [
+    "Frontend loads successfully without errors",
+    "Chart component renders with proper canvas elements", 
+    "Timeframe buttons are clickable and responsive",
+    "Chart updates when timeframe buttons are clicked",
+    "1D timeframe shows reasonable recent period (~1 month of data)"
+  ],
+  
+  "test_report_links": [],
+  
+  "action_item_for_main_agent": "CRITICAL: Fix incomplete timeframe implementation. 1) Add missing timeframe buttons (180D, 1Y, 4H) to UI. 2) Fix scaling logic - 30D shows only 3 weeks instead of full period, 7D shows 2-3 months instead of proper range. 3) Verify longTimeframes array ['7D', '30D', '180D', '1Y'] is properly connected to UI buttons and fitContent() logic. 4) The timeframe mapping between UI buttons and internal chart logic needs debugging.",
+  
+  "updated_files": [],
+  
+  "success_percentage": {
+    "frontend": "40% - Core chart works but timeframe scaling is broken, missing critical timeframes"
+  },
+  
+  "should_call_test_agent_after_fix": "true",
+  "should_main_agent_test_itself": "false"
+}
