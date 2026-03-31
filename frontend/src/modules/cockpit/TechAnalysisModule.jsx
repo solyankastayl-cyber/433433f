@@ -14,7 +14,7 @@ import setupService from '../../services/setupService';
 const PageContainer = styled.div`
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
+  min-height: calc(100vh - 64px);
   background: #f5f7fa;
 `;
 
@@ -142,8 +142,8 @@ const TabButton = styled.button`
 
 const MainContent = styled.div`
   flex: 1;
-  overflow: ${({ $isChart }) => $isChart ? 'hidden' : 'auto'};
-  padding: ${({ $isChart }) => $isChart ? '0' : '0'};
+  overflow-y: auto;
+  padding: 0;
 `;
 
 // Toast notification

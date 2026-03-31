@@ -53,7 +53,8 @@ const Container = styled.div`
   grid-template-columns: 340px 1fr;
   gap: 16px;
   padding: 16px;
-  height: 100%;
+  min-height: calc(100vh - 120px);
+  height: auto;
   
   @media (max-width: 1200px) {
     grid-template-columns: 1fr;
@@ -65,6 +66,7 @@ const LeftPanel = styled.div`
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
+  max-height: calc(100vh - 140px);
   
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
@@ -75,6 +77,7 @@ const RightPanel = styled.div`
   flex-direction: column;
   gap: 12px;
   overflow-y: auto;
+  max-height: calc(100vh - 140px);
   
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
@@ -109,8 +112,8 @@ const CardHeader = styled.div`
 
 const CardContent = styled.div`
   padding: 14px 16px;
-  max-height: 450px;
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
   
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
@@ -422,8 +425,8 @@ const ActionBtn = styled.button`
 
 const DetailContent = styled.div`
   padding: 14px 18px;
-  max-height: 600px;
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
   
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
