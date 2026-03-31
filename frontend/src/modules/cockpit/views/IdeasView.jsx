@@ -50,7 +50,7 @@ import { useMarket } from '../../../store/marketStore';
 
 const Container = styled.div`
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 380px 1fr;
   gap: 16px;
   padding: 16px;
   min-height: calc(100vh - 120px);
@@ -61,12 +61,14 @@ const Container = styled.div`
   }
 `;
 
+// Minimum height to show 3 idea cards (~150px each + gaps + header)
+const MIN_IDEAS_HEIGHT = 580;
+
 const LeftPanel = styled.div`
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow-y: auto;
-  max-height: calc(100vh - 140px);
+  min-height: ${MIN_IDEAS_HEIGHT}px;
   
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
@@ -76,8 +78,7 @@ const RightPanel = styled.div`
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow-y: auto;
-  max-height: calc(100vh - 140px);
+  min-height: ${MIN_IDEAS_HEIGHT}px;
   
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
@@ -112,30 +113,38 @@ const CardHeader = styled.div`
 
 const CardContent = styled.div`
   padding: 14px 16px;
-  max-height: none;
-  overflow-y: visible;
+  /* Show minimum 3 full cards (~150px each), scroll the rest */
+  min-height: 520px;
+  max-height: 520px;
+  overflow-y: auto;
   
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
 `;
 
 // ============================================
-// ACCURACY SCORE
+// ACCURACY SCORE (Compact)
 // ============================================
 
 const AccuracyCard = styled(Card)`
   background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  flex-shrink: 0;
 `;
 
 const AccuracyMain = styled.div`
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
+  gap: 16px;
 `;
 
 const AccuracyLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  
   .value {
-    font-size: 36px;
+    font-size: 28px;
     font-weight: 700;
     color: #0f172a;
     line-height: 1;
@@ -1027,47 +1036,36 @@ const IdeasView = () => {
       <LeftPanel>
         {/* ACCURACY SCORE */}
         <AccuracyCard data-testid="accuracy-card">
-          <CardHeader>
-            <h3><Award /> Accuracy</h3>
-          </CardHeader>
-          <CardContent>
+          <CardContent style={{ padding: '12px 16px' }}>
             {stats.total === 0 ? (
               <EmptyAccuracy>
                 <div className="title">No data yet</div>
-                <div className="subtitle">Save your first idea to track accuracy</div>
               </EmptyAccuracy>
             ) : (
-              <>
-                <AccuracyMain>
-                  <AccuracyLeft>
-                    <div className="value" data-testid="accuracy-value">
-                      {stats.accuracy}<span>%</span>
+              <AccuracyMain>
+                <AccuracyLeft>
+                  <div className="value" data-testid="accuracy-value">
+                    {stats.accuracy}<span>%</span>
+                  </div>
+                  <AccuracyStats style={{ margin: 0, padding: 0, border: 'none' }}>
+                    <StatItem className="win"><CheckCircle2 /><span className="label">W:</span><span className="value">{stats.wins}</span></StatItem>
+                    <StatItem className="loss"><XCircle /><span className="label">L:</span><span className="value">{stats.losses}</span></StatItem>
+                    <StatItem className="total"><Bookmark /><span className="label">All:</span><span className="value">{stats.total}</span></StatItem>
+                  </AccuracyStats>
+                </AccuracyLeft>
+                <AccuracyRight $hasStreak={stats.streak >= 3}>
+                  <div className="streak">
+                    <Flame /> {stats.streak} streak
+                  </div>
+                  {stats.lastResult && (
+                    <div className="last-result">
+                      Last: <span className={`result ${stats.lastResult}`}>
+                        {stats.lastResult === 'correct' ? 'Correct' : 'Wrong'}
+                      </span>
                     </div>
-                    <div className={`trend ${stats.trend}`}>
-                      {stats.trend === 'improving' && <><ArrowUp /> improving</>}
-                      {stats.trend === 'declining' && <><ArrowDown /> declining</>}
-                      {stats.trend === 'stable' && <><Minus /> stable</>}
-                    </div>
-                  </AccuracyLeft>
-                  <AccuracyRight $hasStreak={stats.streak >= 3}>
-                    <div className="streak">
-                      <Flame /> {stats.streak} streak
-                    </div>
-                    {stats.lastResult && (
-                      <div className="last-result">
-                        Last: <span className={`result ${stats.lastResult}`}>
-                          {stats.lastResult === 'correct' ? 'Correct' : 'Wrong'}
-                        </span>
-                      </div>
-                    )}
-                  </AccuracyRight>
-                </AccuracyMain>
-                <AccuracyStats>
-                  <StatItem className="win"><CheckCircle2 /><span className="label">W:</span><span className="value">{stats.wins}</span></StatItem>
-                  <StatItem className="loss"><XCircle /><span className="label">L:</span><span className="value">{stats.losses}</span></StatItem>
-                  <StatItem className="total"><Bookmark /><span className="label">All:</span><span className="value">{stats.total}</span></StatItem>
-                </AccuracyStats>
-              </>
+                  )}
+                </AccuracyRight>
+              </AccuracyMain>
             )}
           </CardContent>
         </AccuracyCard>
@@ -1182,7 +1180,7 @@ const IdeasView = () => {
               idea={selectedIdea}
               activeVersionIndex={activeVersionIndex}
               isReplaying={isReplaying}
-              height={320}
+              height={400}
               chartMode={chartMode}
               allIdeas={ideas}
             />
