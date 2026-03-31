@@ -1,20 +1,23 @@
 /**
- * IdeasView — Idea Timeline System (GRAPH SYNC + REPLAY)
- * ========================================================
+ * IdeasView v2 — Graph-First Ideas Mode
+ * ======================================
  * 
- * Trading Journal 2.0 - "Ощущается ценность"
+ * New Architecture:
+ * - NO left column
+ * - Horizontal Idea Selector Strip at top
+ * - Full-width Graph (center)
+ * - Single Bottom Insight Panel (6 sections)
  * 
  * Key UX:
  * - Auto-select first idea
  * - Graph Sync: clicking idea → chart instantly shows it
  * - Replay: V1 → V2 → V3 animation
  * - Evolution (pattern → pattern)
- * - Result badges (✔ Correct / ✖ Wrong)
- * - Live accuracy with last result & streak
+ * - Result badges
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes, css } from 'styled-components';
 import { 
   Bookmark, 
   RefreshCw, 
@@ -23,600 +26,504 @@ import {
   Clock,
   TrendingUp,
   TrendingDown,
-  Minus,
   ChevronRight,
   Target,
-  Eye,
   Loader2,
   Flame,
   Play,
-  Pause,
   Square,
   Zap,
-  Award,
   ArrowRight,
   ArrowUp,
   ArrowDown,
-  ArrowLeft,
   Sparkles,
+  Filter,
   BarChart3
 } from 'lucide-react';
 import IdeaChart from '../components/IdeaChart';
 import { useMarket } from '../../../store/marketStore';
 
 // ============================================
-// STYLED COMPONENTS (Light Theme)
+// ANIMATIONS
+// ============================================
+
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+// ============================================
+// NEW LAYOUT — GRAPH-FIRST
 // ============================================
 
 const Container = styled.div`
-  display: grid;
-  grid-template-columns: 380px 1fr;
-  gap: 16px;
-  padding: 16px;
-  min-height: calc(100vh - 120px);
-  height: auto;
-  
-  @media (max-width: 1200px) {
-    grid-template-columns: 1fr;
-  }
-`;
-
-// Minimum height to show 3 idea cards (~150px each + gaps + header)
-const MIN_IDEAS_HEIGHT = 580;
-
-const LeftPanel = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-height: ${MIN_IDEAS_HEIGHT}px;
-  
-  &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+  gap: 0;
+  padding: 0;
+  min-height: calc(100vh - 140px);
+  background: #0B0F14;
 `;
 
-const RightPanel = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: ${MIN_IDEAS_HEIGHT}px;
-  
-  &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
-`;
-
-const Card = styled.div`
-  background: #ffffff;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  overflow: hidden;
-`;
-
-const CardHeader = styled.div`
+// Idea Selector Strip (replaces left column)
+const SelectorStrip = styled.div`
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f1f5f9;
+  gap: 12px;
+  padding: 12px 20px;
+  background: #0B0F14;
+  border-bottom: 1px solid #1e293b;
+  overflow-x: auto;
   
-  h3 {
-    display: flex;
-    align-items: center;
+  &::-webkit-scrollbar { height: 4px; }
+  &::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  
+  @media (max-width: 768px) {
+    padding: 10px 12px;
     gap: 8px;
-    margin: 0;
-    font-size: 13px;
-    font-weight: 600;
-    color: #0f172a;
-    
-    svg { width: 15px; height: 15px; color: #3b82f6; }
   }
 `;
 
-const CardContent = styled.div`
-  padding: 14px 16px;
-  /* Show minimum 3 full cards (~150px each), scroll the rest */
-  min-height: 520px;
-  max-height: 520px;
-  overflow-y: auto;
-  
-  &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
-`;
-
-// ============================================
-// ACCURACY SCORE (Compact)
-// ============================================
-
-const AccuracyCard = styled(Card)`
-  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+const StripControls = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  border-right: 1px solid #1e293b;
   flex-shrink: 0;
 `;
 
-const AccuracyMain = styled.div`
+const FilterBtn = styled.button`
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-`;
-
-const AccuracyLeft = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  
-  .value {
-    font-size: 28px;
-    font-weight: 700;
-    color: #0f172a;
-    line-height: 1;
-    
-    span { font-size: 18px; color: #94a3b8; }
-  }
-  
-  .trend {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 4px;
-    font-size: 11px;
-    font-weight: 500;
-    
-    &.improving { color: #16a34a; }
-    &.declining { color: #dc2626; }
-    &.stable { color: #64748b; }
-    
-    svg { width: 12px; height: 12px; }
-  }
-`;
-
-const AccuracyRight = styled.div`
-  text-align: right;
-  
-  .streak {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 10px;
-    background: ${({ $hasStreak }) => $hasStreak ? '#fef3c7' : '#f1f5f9'};
-    color: ${({ $hasStreak }) => $hasStreak ? '#d97706' : '#64748b'};
-    border-radius: 8px;
-    font-size: 11px;
-    font-weight: 600;
-    
-    svg { width: 13px; height: 13px; }
-  }
-  
-  .last-result {
-    margin-top: 8px;
-    font-size: 11px;
-    color: #64748b;
-    
-    .result {
-      font-weight: 600;
-      &.correct { color: #16a34a; }
-      &.wrong { color: #dc2626; }
-    }
-  }
-`;
-
-const AccuracyStats = styled.div`
-  display: flex;
-  gap: 16px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #f1f5f9;
-`;
-
-const StatItem = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  
-  svg { width: 13px; height: 13px; }
-  .label { color: #64748b; }
-  .value { font-weight: 600; color: #0f172a; }
-  
-  &.win svg { color: #16a34a; }
-  &.loss svg { color: #dc2626; }
-  &.total svg { color: #3b82f6; }
-`;
-
-const EmptyAccuracy = styled.div`
-  text-align: center;
-  padding: 16px;
-  
-  .title { font-size: 13px; font-weight: 500; color: #64748b; margin-bottom: 4px; }
-  .subtitle { font-size: 11px; color: #94a3b8; }
-`;
-
-// ============================================
-// FILTER TABS
-// ============================================
-
-const FilterTabs = styled.div`
-  display: flex;
   gap: 4px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-`;
-
-const FilterTab = styled.button`
-  padding: 5px 10px;
-  border-radius: 6px;
-  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
-  background: ${({ $active }) => $active ? '#eff6ff' : '#ffffff'};
-  color: ${({ $active }) => $active ? '#3b82f6' : '#64748b'};
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#334155'};
+  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+  color: ${({ $active }) => $active ? '#60a5fa' : '#94a3b8'};
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
   
-  &:hover { border-color: #3b82f6; color: #3b82f6; }
-`;
-
-// ============================================
-// IDEA CARD
-// ============================================
-
-const IdeaCardStyled = styled.div`
-  padding: 12px 14px;
-  background: ${({ $active }) => $active ? '#f0f9ff' : '#ffffff'};
-  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  margin-bottom: 8px;
+  svg { width: 12px; height: 12px; }
   
   &:hover {
     border-color: #3b82f6;
-    background: #f8fafc;
-    transform: translateY(-1px);
+    color: #60a5fa;
   }
 `;
 
-const IdeaHeader = styled.div`
+const RefreshBtn = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s;
+  
+  svg { width: 14px; height: 14px; }
+  
+  &:hover { border-color: #3b82f6; color: #60a5fa; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
+// Idea Card (Horizontal Chip)
+const IdeaChip = styled.div`
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 260px;
+  padding: 10px 14px;
+  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.12)' : '#111827'};
+  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#1e293b'};
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  animation: ${fadeIn} 0.3s ease;
+  
+  ${({ $active }) => $active && css`
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  `}
+  
+  &:hover {
+    border-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.08);
+    transform: translateY(-2px);
+  }
+`;
+
+const ChipHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 `;
 
-const IdeaAsset = styled.div`
+const ChipAsset = styled.div`
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   
-  .symbol { font-size: 14px; font-weight: 700; color: #0f172a; }
+  .symbol { 
+    font-size: 14px; 
+    font-weight: 700; 
+    color: #f1f5f9; 
+  }
   .timeframe {
     font-size: 10px;
     font-weight: 600;
-    padding: 2px 6px;
-    background: #f1f5f9;
+    padding: 2px 5px;
+    background: rgba(148, 163, 184, 0.15);
     border-radius: 4px;
-    color: #64748b;
+    color: #94a3b8;
   }
 `;
 
 const ResultBadge = styled.span`
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 10px;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 9px;
   font-weight: 600;
   
-  svg { width: 11px; height: 11px; }
+  svg { width: 10px; height: 10px; }
   
   ${({ $type }) => {
     switch ($type) {
-      case 'correct': return `background: #dcfce7; color: #16a34a;`;
-      case 'wrong': return `background: #fee2e2; color: #dc2626;`;
-      case 'active': return `background: #dbeafe; color: #2563eb;`;
-      default: return `background: #f1f5f9; color: #64748b;`;
+      case 'correct': return `background: rgba(34, 197, 94, 0.15); color: #4ade80;`;
+      case 'wrong': return `background: rgba(239, 68, 68, 0.15); color: #f87171;`;
+      case 'active': return `background: rgba(59, 130, 246, 0.15); color: #60a5fa;`;
+      default: return `background: rgba(148, 163, 184, 0.15); color: #94a3b8;`;
     }
   }}
 `;
 
-const EvolutionBlock = styled.div`
-  .evolution {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    margin-bottom: 4px;
-    
-    .pattern { text-transform: capitalize; color: #0f172a; font-weight: 500; }
-    .ghost { color: #94a3b8; text-decoration: line-through; }
-    .arrow { color: #3b82f6; svg { width: 13px; height: 13px; } }
-  }
+const ChipEvolution = styled.div`
+  font-size: 12px;
+  color: #cbd5e1;
+  margin-bottom: 4px;
   
-  .probability {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    color: #64748b;
-    
-    .change {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-      font-weight: 600;
-      &.up { color: #16a34a; }
-      &.down { color: #dc2626; }
-      svg { width: 10px; height: 10px; }
-    }
-  }
+  .ghost { color: #475569; text-decoration: line-through; }
+  .arrow { color: #3b82f6; margin: 0 4px; }
+  .current { text-transform: capitalize; font-weight: 500; }
 `;
 
-const IdeaMeta = styled.div`
+const ChipMeta = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #f1f5f9;
+  gap: 8px;
   font-size: 10px;
-  color: #94a3b8;
+  color: #64748b;
   
-  .item { display: flex; align-items: center; gap: 4px; svg { width: 11px; height: 11px; } }
+  .prob {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    &.up { color: #4ade80; }
+    &.down { color: #f87171; }
+    svg { width: 10px; height: 10px; }
+  }
+  
   .score {
     font-weight: 600;
-    &.positive { color: #16a34a; }
-    &.negative { color: #dc2626; }
+    &.positive { color: #4ade80; }
+    &.negative { color: #f87171; }
   }
 `;
 
-// ============================================
-// DETAIL PANEL
-// ============================================
-
-const DetailPanel = styled(Card)`
-  display: flex;
-  flex-direction: column;
+// Graph Section (Full Width)
+const GraphSection = styled.div`
+  position: relative;
+  width: 100%;
+  padding: 16px 20px;
+  background: #0B0F14;
+  animation: ${fadeIn} 0.3s ease;
+  
+  @media (max-width: 768px) {
+    padding: 12px;
+  }
 `;
 
-const DetailHeader = styled.div`
+const GraphCard = styled.div`
+  position: relative;
+  background: #111827;
+  border-radius: 16px;
+  border: 1px solid #1e293b;
+  overflow: hidden;
+  min-height: 480px;
+  
+  @media (max-width: 768px) {
+    min-height: 360px;
+  }
+`;
+
+// Bottom Insight Panel (Full Width)
+const InsightPanel = styled.div`
+  background: #111827;
+  border-top: 1px solid #1e293b;
+  padding: 20px 24px;
+  animation: ${fadeIn} 0.4s ease;
+  
+  @media (max-width: 768px) {
+    padding: 16px;
+  }
+`;
+
+const InsightHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px;
-  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 20px;
 `;
 
-const DetailTitle = styled.div`
+const InsightTitle = styled.div`
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   
-  .symbol { font-size: 18px; font-weight: 700; color: #0f172a; }
+  .symbol { 
+    font-size: 20px; 
+    font-weight: 700; 
+    color: #f1f5f9; 
+  }
   .timeframe {
     font-size: 11px;
     font-weight: 600;
     padding: 3px 8px;
-    background: #f1f5f9;
+    background: rgba(148, 163, 184, 0.12);
     border-radius: 6px;
-    color: #64748b;
+    color: #94a3b8;
   }
 `;
 
-const DetailActions = styled.div`
+const InsightActions = styled.div`
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 `;
 
 const ActionBtn = styled.button`
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 6px 12px;
+  padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid ${({ $primary }) => $primary ? '#3b82f6' : '#e2e8f0'};
-  background: ${({ $primary }) => $primary ? '#3b82f6' : '#ffffff'};
-  color: ${({ $primary }) => $primary ? '#ffffff' : '#64748b'};
-  font-size: 11px;
+  border: 1px solid ${({ $primary }) => $primary ? '#3b82f6' : '#334155'};
+  background: ${({ $primary }) => $primary ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+  color: ${({ $primary }) => $primary ? '#60a5fa' : '#94a3b8'};
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
   
-  svg { width: 13px; height: 13px; }
+  svg { width: 14px; height: 14px; }
   
   &:hover:not(:disabled) {
     border-color: #3b82f6;
-    color: ${({ $primary }) => $primary ? '#ffffff' : '#3b82f6'};
-    background: ${({ $primary }) => $primary ? '#2563eb' : '#f8fafc'};
+    color: #60a5fa;
+    background: rgba(59, 130, 246, 0.1);
   }
   
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
-const DetailContent = styled.div`
-  padding: 14px 18px;
-  max-height: none;
-  overflow-y: visible;
+// 6 Section Grid
+const InsightGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
   
-  &::-webkit-scrollbar { width: 4px; }
-  &::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+  @media (max-width: 1200px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
 `;
 
-// Info Blocks
-const InfoSection = styled.div`
-  margin-bottom: 16px;
+const InsightBlock = styled.div`
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 12px;
+  border: 1px solid #1e293b;
   
-  .section-label {
+  .label {
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #94a3b8;
-    margin-bottom: 8px;
+    color: #64748b;
+    margin-bottom: 10px;
   }
 `;
 
-const EvolutionCard = styled.div`
-  padding: 12px 14px;
-  background: #f8fafc;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  
+// Evolution Block
+const EvolutionContent = styled.div`
   .main {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     
-    .pattern { font-size: 15px; font-weight: 600; color: #0f172a; text-transform: capitalize; }
-    .arrow { color: #3b82f6; svg { width: 14px; height: 14px; } }
+    .pattern { 
+      font-size: 16px; 
+      font-weight: 600; 
+      color: #f1f5f9;
+      text-transform: capitalize;
+    }
+    .arrow { color: #3b82f6; svg { width: 16px; height: 16px; } }
   }
   
   .dates { font-size: 11px; color: #64748b; }
 `;
 
-const InterpretationCard = styled.div`
-  padding: 12px 14px;
-  background: linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%);
-  border-radius: 10px;
-  border: 1px solid #dcfce7;
-  
-  .text { font-size: 13px; color: #0f172a; line-height: 1.5; }
-`;
-
-const ProbabilityCard = styled.div`
-  padding: 12px 14px;
-  background: #f8fafc;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  
+// Probability Block
+const ProbContent = styled.div`
   .row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 6px;
-    &:last-child { margin-bottom: 0; }
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+    &:last-child { border-bottom: none; }
   }
   
-  .label { font-size: 12px; color: #64748b; }
+  .label { font-size: 12px; color: #94a3b8; }
   
   .value {
     display: flex;
     align-items: center;
-    gap: 5px;
-    font-size: 13px;
+    gap: 6px;
+    font-size: 14px;
     font-weight: 600;
-    &.up { color: #16a34a; }
-    &.down { color: #dc2626; }
+    
+    &.up { color: #4ade80; }
+    &.down { color: #f87171; }
+    
+    svg { width: 14px; height: 14px; }
     
     .change {
       font-size: 10px;
-      padding: 1px 5px;
+      padding: 2px 5px;
       border-radius: 4px;
-      &.positive { background: #dcfce7; color: #16a34a; }
-      &.negative { background: #fee2e2; color: #dc2626; }
+      &.positive { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+      &.negative { background: rgba(239, 68, 68, 0.15); color: #f87171; }
     }
-    
-    svg { width: 13px; height: 13px; }
   }
 `;
 
-const LevelsCard = styled.div`
-  padding: 12px 14px;
-  background: #f8fafc;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  
+// Levels Block
+const LevelsContent = styled.div`
   .level {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 8px;
-    &:last-child { margin-bottom: 0; }
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+    &:last-child { border-bottom: none; }
     
-    .label { font-size: 11px; &.breakout { color: #16a34a; } &.invalidation { color: #dc2626; } }
-    .price { font-size: 16px; font-weight: 700; color: #0f172a; }
-  }
-`;
-
-const WhatNextCard = styled.div`
-  padding: 12px 14px;
-  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
-  border-radius: 10px;
-  border: 1px solid #dbeafe;
-  
-  .text {
-    font-size: 13px;
-    color: #2563eb;
-    font-weight: 500;
-    svg { width: 13px; height: 13px; display: inline; margin-right: 5px; }
-  }
-`;
-
-const ScoreCard = styled.div`
-  padding: 12px 14px;
-  background: ${({ $positive }) => $positive ? '#f0fdf4' : $positive === false ? '#fef2f2' : '#f8fafc'};
-  border-radius: 10px;
-  border: 1px solid ${({ $positive }) => $positive ? '#dcfce7' : $positive === false ? '#fee2e2' : '#e2e8f0'};
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  
-  .label { font-size: 11px; color: #64748b; }
-  .score {
-    font-size: 16px;
-    font-weight: 700;
-    color: ${({ $positive }) => $positive ? '#16a34a' : $positive === false ? '#dc2626' : '#64748b'};
-  }
-`;
-
-// Timeline
-const TimelineCard = styled.div`
-  padding: 12px 14px;
-  background: #f8fafc;
-  border-radius: 10px;
-  border: 1px solid #e2e8f0;
-  
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 10px;
-    
-    .label {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #94a3b8;
+    .label { 
+      font-size: 11px; 
+      font-weight: 500;
+      &.breakout { color: #4ade80; }
+      &.invalidation { color: #f87171; }
+      &.target { color: #60a5fa; }
+    }
+    .price { 
+      font-size: 16px; 
+      font-weight: 700; 
+      color: #f1f5f9;
     }
   }
 `;
 
-const VersionButtons = styled.div`
+// What Next Block
+const WhatNextContent = styled.div`
+  .text {
+    font-size: 14px;
+    color: #60a5fa;
+    font-weight: 500;
+    line-height: 1.5;
+    
+    svg { 
+      width: 14px; 
+      height: 14px; 
+      display: inline; 
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+  }
+`;
+
+// Score Block
+const ScoreContent = styled.div`
   display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  
+  .info {
+    .result { 
+      font-size: 14px; 
+      font-weight: 600; 
+      color: ${({ $positive }) => $positive ? '#4ade80' : $positive === false ? '#f87171' : '#94a3b8'};
+      margin-bottom: 4px;
+    }
+    .impact { font-size: 11px; color: #64748b; }
+  }
+  
+  .score {
+    font-size: 28px;
+    font-weight: 700;
+    color: ${({ $positive }) => $positive ? '#4ade80' : $positive === false ? '#f87171' : '#94a3b8'};
+  }
+`;
+
+// Timeline Block
+const TimelineContent = styled.div`
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  
+  .versions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
 `;
 
 const VersionBtn = styled.button`
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 6px 12px;
+  padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
-  background: ${({ $active }) => $active ? '#3b82f6' : '#ffffff'};
-  color: ${({ $active }) => $active ? '#ffffff' : '#64748b'};
-  font-size: 11px;
+  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#334155'};
+  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+  color: ${({ $active }) => $active ? '#60a5fa' : '#94a3b8'};
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
-  min-width: 60px;
+  min-width: 65px;
   
   .version { margin-bottom: 2px; }
-  .date { font-size: 9px; font-weight: 400; opacity: 0.8; }
+  .date { font-size: 9px; font-weight: 400; opacity: 0.7; }
   
-  &:hover { border-color: #3b82f6; }
+  &:hover { border-color: #3b82f6; color: #60a5fa; }
 `;
 
 // Empty States
@@ -625,29 +532,50 @@ const EmptyState = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 24px;
+  padding: 60px 24px;
   text-align: center;
   
-  svg { width: 48px; height: 48px; color: #cbd5e1; margin-bottom: 14px; }
-  h4 { font-size: 14px; font-weight: 600; color: #0f172a; margin: 0 0 4px 0; }
-  p { font-size: 12px; color: #94a3b8; margin: 0; }
+  svg { width: 56px; height: 56px; color: #334155; margin-bottom: 16px; }
+  h4 { font-size: 16px; font-weight: 600; color: #f1f5f9; margin: 0 0 6px 0; }
+  p { font-size: 13px; color: #64748b; margin: 0; }
 `;
 
 const LoadingOverlay = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 30px;
+  padding: 40px;
   
   svg { animation: spin 1s linear infinite; color: #3b82f6; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 `;
 
-// Replay controls
-const ReplayControls = styled.div`
+// Chart Mode Toggle (on graph)
+const ChartModeToggle = styled.div`
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  gap: 4px;
+  z-index: 25;
+`;
+
+const ModeBtn = styled.button`
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid ${({ $active, $color }) => $active ? ($color || '#3b82f6') : '#334155'};
+  background: ${({ $active, $color }) => $active ? `${$color || '#3b82f6'}20` : 'rgba(17, 24, 39, 0.9)'};
+  color: ${({ $active, $color }) => $active ? ($color || '#60a5fa') : '#94a3b8'};
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: all 0.15s;
+  
+  &:hover {
+    border-color: ${({ $color }) => $color || '#3b82f6'};
+    color: ${({ $color }) => $color || '#60a5fa'};
+  }
 `;
 
 // ============================================
@@ -818,10 +746,7 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 // Normalize backend idea to frontend format
 function normalizeIdea(raw) {
   const versions = (raw.versions || []).map((v, i) => {
-    // Handle both backend format (setup_snapshot) and frontend format (snapshot)
     const setupSnapshot = v.setup_snapshot || v.snapshot || {};
-    
-    // Extract pattern info from setup_snapshot (may be nested)
     const pattern = setupSnapshot.pattern || 
       setupSnapshot.top_setup?.setup_type || 'unknown';
     const confidence = v.confidence || setupSnapshot.confidence || 0.5;
@@ -829,7 +754,6 @@ function normalizeIdea(raw) {
     const levels = setupSnapshot.levels || {};
     const interpretation = v.ai_explanation || setupSnapshot.interpretation || '';
     const lifecycle = setupSnapshot.lifecycle || 'unknown';
-    const context = setupSnapshot.context || {};
     
     return {
       v: v.version || v.v || i + 1,
@@ -844,17 +768,14 @@ function normalizeIdea(raw) {
         probability,
         levels,
         interpretation,
-        context,
       },
     };
   });
   
-  // Determine outcome from validations or result
   let outcome = raw.outcome || null;
   let status = raw.status || 'active';
   let score = raw.score ?? 0;
   
-  // Handle backend validation format
   if (raw.validations?.length) {
     const lastVal = raw.validations[raw.validations.length - 1];
     if (lastVal.result === 'correct' || lastVal.result === 'partially_correct') {
@@ -869,12 +790,9 @@ function normalizeIdea(raw) {
     }
   }
   
-  // Handle result field
   if (raw.result?.status === 'correct') { score = 1; status = 'completed'; }
   if (raw.result?.status === 'wrong') { score = -1; status = 'completed'; }
   if (raw.result?.outcome) { outcome = raw.result.outcome; }
-  
-  // Handle invalidated status
   if (status === 'invalidated') { status = 'completed'; outcome = outcome || 'invalidated'; score = -1; }
   
   return {
@@ -900,13 +818,13 @@ const IdeasView = () => {
   const [selectedIdea, setSelectedIdea] = useState(null);
   const [activeVersionIndex, setActiveVersionIndex] = useState(0);
   const [filter, setFilter] = useState('all');
-  const [chartMode, setChartMode] = useState('idea'); // idea | performance
+  const [chartMode, setChartMode] = useState('idea');
   
   // Replay state
   const [isReplaying, setIsReplaying] = useState(false);
   const replayIntervalRef = useRef(null);
 
-  // Fetch ideas — try API first, fallback to MOCK
+  // Fetch ideas
   const fetchIdeas = useCallback(async () => {
     setLoading(true);
     try {
@@ -921,7 +839,6 @@ const IdeasView = () => {
           return;
         }
       }
-      // Fallback to mock
       setIdeas(MOCK_IDEAS);
     } catch (err) {
       console.error('Failed to fetch ideas:', err);
@@ -941,9 +858,8 @@ const IdeasView = () => {
     }
   }, [ideas, selectedIdea]);
 
-  // Select idea handler — instant chart sync
+  // Select idea handler
   const handleSelectIdea = useCallback((idea) => {
-    // Stop any running replay
     if (replayIntervalRef.current) {
       clearInterval(replayIntervalRef.current);
       replayIntervalRef.current = null;
@@ -957,7 +873,6 @@ const IdeasView = () => {
   const handleReplay = useCallback(() => {
     if (!selectedIdea || selectedIdea.versions.length < 2) return;
     
-    // Stop existing replay
     if (replayIntervalRef.current) {
       clearInterval(replayIntervalRef.current);
       replayIntervalRef.current = null;
@@ -966,7 +881,6 @@ const IdeasView = () => {
       return;
     }
     
-    // Start replay from V1
     setIsReplaying(true);
     setActiveVersionIndex(0);
     let idx = 0;
@@ -983,37 +897,11 @@ const IdeasView = () => {
     }, 800);
   }, [selectedIdea]);
 
-  // Cleanup replay on unmount
   useEffect(() => {
     return () => {
       if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
     };
   }, []);
-
-  // Calculate stats
-  const stats = useMemo(() => {
-    const wins = ideas.filter(i => i.outcome === 'success_up' || i.outcome === 'success_down').length;
-    const losses = ideas.filter(i => i.outcome === 'invalidated').length;
-    const total = ideas.length;
-    const decided = wins + losses;
-    const accuracy = decided > 0 ? Math.round(wins / decided * 100) : 0;
-    
-    let streak = 0;
-    const sorted = [...ideas]
-      .filter(i => i.status === 'completed')
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    
-    for (const idea of sorted) {
-      if (idea.outcome === 'success_up' || idea.outcome === 'success_down') streak++;
-      else break;
-    }
-    
-    const lastCompleted = sorted[0];
-    const lastResult = lastCompleted ? getResultType(lastCompleted.status, lastCompleted.outcome) : null;
-    const trend = accuracy > 50 ? 'improving' : accuracy < 50 ? 'declining' : 'stable';
-    
-    return { wins, losses, total, accuracy, streak, lastResult, trend };
-  }, [ideas]);
 
   // Filter ideas
   const filteredIdeas = useMemo(() => {
@@ -1032,383 +920,310 @@ const IdeasView = () => {
 
   return (
     <Container data-testid="ideas-view">
-      {/* LEFT PANEL */}
-      <LeftPanel>
-        {/* ACCURACY SCORE */}
-        <AccuracyCard data-testid="accuracy-card">
-          <CardContent style={{ padding: '12px 16px' }}>
-            {stats.total === 0 ? (
-              <EmptyAccuracy>
-                <div className="title">No data yet</div>
-              </EmptyAccuracy>
-            ) : (
-              <AccuracyMain>
-                <AccuracyLeft>
-                  <div className="value" data-testid="accuracy-value">
-                    {stats.accuracy}<span>%</span>
-                  </div>
-                  <AccuracyStats style={{ margin: 0, padding: 0, border: 'none' }}>
-                    <StatItem className="win"><CheckCircle2 /><span className="label">W:</span><span className="value">{stats.wins}</span></StatItem>
-                    <StatItem className="loss"><XCircle /><span className="label">L:</span><span className="value">{stats.losses}</span></StatItem>
-                    <StatItem className="total"><Bookmark /><span className="label">All:</span><span className="value">{stats.total}</span></StatItem>
-                  </AccuracyStats>
-                </AccuracyLeft>
-                <AccuracyRight $hasStreak={stats.streak >= 3}>
-                  <div className="streak">
-                    <Flame /> {stats.streak} streak
-                  </div>
-                  {stats.lastResult && (
-                    <div className="last-result">
-                      Last: <span className={`result ${stats.lastResult}`}>
-                        {stats.lastResult === 'correct' ? 'Correct' : 'Wrong'}
-                      </span>
-                    </div>
-                  )}
-                </AccuracyRight>
-              </AccuracyMain>
-            )}
-          </CardContent>
-        </AccuracyCard>
-
-        {/* IDEAS FEED */}
-        <Card style={{ flex: 1 }} data-testid="ideas-feed">
-          <CardHeader>
-            <h3><Bookmark /> Ideas</h3>
-            <ActionBtn onClick={fetchIdeas} disabled={loading} data-testid="refresh-ideas-btn">
-              <RefreshCw size={13} />
-            </ActionBtn>
-          </CardHeader>
-          <CardContent>
-            <FilterTabs data-testid="filter-tabs">
-              {['all', 'active', 'completed', 'correct', 'wrong'].map(f => (
-                <FilterTab key={f} $active={filter === f} onClick={() => setFilter(f)} data-testid={`filter-${f}`}>
-                  {f.charAt(0).toUpperCase() + f.slice(1)}
-                </FilterTab>
-              ))}
-            </FilterTabs>
-
-            {loading ? (
-              <LoadingOverlay><Loader2 size={24} /></LoadingOverlay>
-            ) : filteredIdeas.length === 0 ? (
-              <EmptyState>
-                <Bookmark />
-                <h4>No ideas found</h4>
-                <p>Try a different filter</p>
-              </EmptyState>
-            ) : (
-              filteredIdeas.map(idea => {
-                const v1 = idea.versions[0];
-                const v2 = idea.versions[idea.versions.length - 1];
-                const hasEvolution = idea.versions.length > 1;
-                const resultType = getResultType(idea.status, idea.outcome);
-                const probChange = hasEvolution ? v2.snapshot.probability.up - v1.snapshot.probability.up : 0;
+      {/* IDEA SELECTOR STRIP (replaces left column) */}
+      <SelectorStrip data-testid="idea-selector-strip">
+        <StripControls>
+          <FilterBtn 
+            $active={filter === 'all'} 
+            onClick={() => setFilter('all')}
+            data-testid="filter-all"
+          >
+            All
+          </FilterBtn>
+          <FilterBtn 
+            $active={filter === 'active'} 
+            onClick={() => setFilter('active')}
+            data-testid="filter-active"
+          >
+            <Zap /> Active
+          </FilterBtn>
+          <FilterBtn 
+            $active={filter === 'correct'} 
+            onClick={() => setFilter('correct')}
+            data-testid="filter-correct"
+          >
+            <CheckCircle2 /> Win
+          </FilterBtn>
+          <FilterBtn 
+            $active={filter === 'wrong'} 
+            onClick={() => setFilter('wrong')}
+            data-testid="filter-wrong"
+          >
+            <XCircle /> Loss
+          </FilterBtn>
+          <RefreshBtn onClick={fetchIdeas} disabled={loading} data-testid="refresh-ideas-btn">
+            <RefreshCw />
+          </RefreshBtn>
+        </StripControls>
+        
+        {/* Idea Chips */}
+        {loading ? (
+          <LoadingOverlay><Loader2 size={20} /></LoadingOverlay>
+        ) : filteredIdeas.length === 0 ? (
+          <span style={{ color: '#64748b', fontSize: 12 }}>No ideas found</span>
+        ) : (
+          filteredIdeas.map(idea => {
+            const v1 = idea.versions[0];
+            const v2 = idea.versions[idea.versions.length - 1];
+            const hasEvolution = idea.versions.length > 1;
+            const resultType = getResultType(idea.status, idea.outcome);
+            
+            return (
+              <IdeaChip
+                key={idea.idea_id}
+                $active={selectedIdea?.idea_id === idea.idea_id}
+                onClick={() => handleSelectIdea(idea)}
+                data-testid={`idea-chip-${idea.idea_id}`}
+              >
+                <ChipHeader>
+                  <ChipAsset>
+                    <span className="symbol">{idea.asset.replace('USDT', '')}</span>
+                    <span className="timeframe">{idea.timeframe}</span>
+                  </ChipAsset>
+                  <ResultBadge $type={resultType}>
+                    {resultType === 'correct' && <CheckCircle2 />}
+                    {resultType === 'wrong' && <XCircle />}
+                    {resultType === 'active' && <Zap />}
+                    {getResultLabel(idea.status, idea.outcome)}
+                  </ResultBadge>
+                </ChipHeader>
                 
-                return (
-                  <IdeaCardStyled
-                    key={idea.idea_id}
-                    $active={selectedIdea?.idea_id === idea.idea_id}
-                    onClick={() => handleSelectIdea(idea)}
-                    data-testid={`idea-card-${idea.idea_id}`}
-                  >
-                    <IdeaHeader>
-                      <IdeaAsset>
-                        <span className="symbol">{idea.asset.replace('USDT', '')}</span>
-                        <span className="timeframe">{idea.timeframe}</span>
-                      </IdeaAsset>
-                      <ResultBadge $type={resultType} data-testid={`result-badge-${idea.idea_id}`}>
-                        {resultType === 'correct' && <CheckCircle2 />}
-                        {resultType === 'wrong' && <XCircle />}
-                        {resultType === 'active' && <Zap />}
-                        {getResultLabel(idea.status, idea.outcome)}
-                      </ResultBadge>
-                    </IdeaHeader>
-                    
-                    <EvolutionBlock>
-                      <div className="evolution">
-                        <span className={hasEvolution ? 'ghost' : 'pattern'}>
-                          {v1.snapshot.pattern.replace(/_/g, ' ')}
-                        </span>
-                        {hasEvolution && (
-                          <>
-                            <span className="arrow"><ArrowRight /></span>
-                            <span className="pattern">{v2.snapshot.pattern.replace(/_/g, ' ')}</span>
-                          </>
-                        )}
-                      </div>
-                      <div className="probability">
-                        {Math.round(v1.snapshot.probability.up * 100)}%
-                        {hasEvolution && (
-                          <>
-                            {' → '}
-                            <span className={`change ${probChange > 0 ? 'up' : 'down'}`}>
-                              {probChange > 0 ? <ArrowUp /> : <ArrowDown />}
-                              {Math.round(v2.snapshot.probability.up * 100)}%
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </EvolutionBlock>
-                    
-                    <IdeaMeta>
-                      <div className="item">
-                        <Clock />
-                        {formatTimeAgo(v1.timestamp)}
-                        {hasEvolution && ` → ${formatTimeAgo(v2.timestamp)}`}
-                      </div>
-                      {idea.score !== 0 && (
-                        <div className="item">
-                          <span className={`score ${idea.score > 0 ? 'positive' : 'negative'}`}>
-                            {idea.score > 0 ? '+1' : '-1'}
-                          </span>
-                        </div>
-                      )}
-                    </IdeaMeta>
-                  </IdeaCardStyled>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
-      </LeftPanel>
+                <ChipEvolution>
+                  <span className={hasEvolution ? 'ghost' : 'current'}>
+                    {v1.snapshot.pattern.replace(/_/g, ' ')}
+                  </span>
+                  {hasEvolution && (
+                    <>
+                      <span className="arrow">→</span>
+                      <span className="current">{v2.snapshot.pattern.replace(/_/g, ' ')}</span>
+                    </>
+                  )}
+                </ChipEvolution>
+                
+                <ChipMeta>
+                  <span className={`prob ${v2.snapshot.probability.up > 0.5 ? 'up' : 'down'}`}>
+                    {v2.snapshot.probability.up > 0.5 ? <ArrowUp /> : <ArrowDown />}
+                    {Math.round(v2.snapshot.probability.up * 100)}%
+                  </span>
+                  <Clock size={10} />
+                  <span>{formatTimeAgo(v1.timestamp)}</span>
+                  {idea.score !== 0 && (
+                    <span className={`score ${idea.score > 0 ? 'positive' : 'negative'}`}>
+                      {idea.score > 0 ? '+1' : '-1'}
+                    </span>
+                  )}
+                </ChipMeta>
+              </IdeaChip>
+            );
+          })
+        )}
+      </SelectorStrip>
 
-      {/* RIGHT PANEL — CHART + DETAIL */}
-      <RightPanel>
-        {/* CHART AREA */}
-        {selectedIdea && (
-          <div style={{ position: 'relative' }}>
+      {/* GRAPH SECTION (Full Width) */}
+      <GraphSection data-testid="graph-section">
+        {selectedIdea ? (
+          <GraphCard>
             <IdeaChart
               idea={selectedIdea}
               activeVersionIndex={activeVersionIndex}
               isReplaying={isReplaying}
-              height={400}
+              height={480}
               chartMode={chartMode}
               allIdeas={ideas}
             />
+            
             {/* Chart Mode Toggle */}
-            <div style={{
-              position: 'absolute',
-              bottom: 12,
-              right: 12,
-              display: 'flex',
-              gap: 4,
-              zIndex: 25,
-            }}>
-              <button
-                data-testid="chart-mode-idea-btn"
+            <ChartModeToggle>
+              <ModeBtn
+                $active={chartMode === 'idea'}
+                $color="#3b82f6"
                 onClick={() => setChartMode('idea')}
-                style={{
-                  padding: '5px 10px',
-                  borderRadius: 6,
-                  border: `1px solid ${chartMode === 'idea' ? '#3b82f6' : '#e2e8f0'}`,
-                  background: chartMode === 'idea' ? '#3b82f6' : 'rgba(255,255,255,0.9)',
-                  color: chartMode === 'idea' ? '#ffffff' : '#64748b',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  backdropFilter: 'blur(4px)',
-                }}
+                data-testid="chart-mode-idea-btn"
               >
                 Idea
-              </button>
-              <button
-                data-testid="chart-mode-performance-btn"
+              </ModeBtn>
+              <ModeBtn
+                $active={chartMode === 'performance'}
+                $color="#8b5cf6"
                 onClick={() => setChartMode('performance')}
-                style={{
-                  padding: '5px 10px',
-                  borderRadius: 6,
-                  border: `1px solid ${chartMode === 'performance' ? '#8b5cf6' : '#e2e8f0'}`,
-                  background: chartMode === 'performance' ? '#8b5cf6' : 'rgba(255,255,255,0.9)',
-                  color: chartMode === 'performance' ? '#ffffff' : '#64748b',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  backdropFilter: 'blur(4px)',
-                }}
+                data-testid="chart-mode-performance-btn"
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  Performance
-                </span>
-              </button>
-            </div>
-          </div>
+                Performance
+              </ModeBtn>
+            </ChartModeToggle>
+          </GraphCard>
+        ) : (
+          <GraphCard>
+            <EmptyState>
+              <Sparkles />
+              <h4>Select an Idea</h4>
+              <p>Choose an idea from the strip above to view analysis</p>
+            </EmptyState>
+          </GraphCard>
         )}
-        
-        {/* DETAIL PANEL */}
-        <DetailPanel data-testid="detail-panel">
-          {selectedIdea && activeVersion ? (
-            <>
-              <DetailHeader>
-                <DetailTitle>
-                  <span className="symbol">{selectedIdea.asset.replace('USDT', '')}</span>
-                  <span className="timeframe">{selectedIdea.timeframe}</span>
-                  <ResultBadge $type={getResultType(selectedIdea.status, selectedIdea.outcome)} data-testid="detail-result-badge">
-                    {getResultLabel(selectedIdea.status, selectedIdea.outcome)}
-                  </ResultBadge>
-                </DetailTitle>
-                <DetailActions>
+      </GraphSection>
+
+      {/* BOTTOM INSIGHT PANEL (6 Sections) */}
+      {selectedIdea && activeVersion && (
+        <InsightPanel data-testid="insight-panel">
+          <InsightHeader>
+            <InsightTitle>
+              <ResultBadge $type={getResultType(selectedIdea.status, selectedIdea.outcome)} style={{ padding: '4px 10px', fontSize: 11 }}>
+                {getResultLabel(selectedIdea.status, selectedIdea.outcome)}
+              </ResultBadge>
+              <span className="symbol">{selectedIdea.asset.replace('USDT', '')}</span>
+              <span className="timeframe">{selectedIdea.timeframe}</span>
+            </InsightTitle>
+            
+            <InsightActions>
+              {selectedIdea.versions.length > 1 && (
+                <ActionBtn
+                  onClick={handleReplay}
+                  data-testid="replay-btn"
+                  $primary={isReplaying}
+                >
+                  {isReplaying ? <><Square size={12} /> Stop</> : <><Play size={12} /> Replay</>}
+                </ActionBtn>
+              )}
+            </InsightActions>
+          </InsightHeader>
+          
+          <InsightGrid>
+            {/* 1. Evolution */}
+            <InsightBlock data-testid="evolution-block">
+              <div className="label">Evolution</div>
+              <EvolutionContent>
+                <div className="main">
+                  <span className="pattern">{firstVersion.snapshot.pattern.replace(/_/g, ' ')}</span>
+                  {selectedIdea.versions.length > 1 && (
+                    <>
+                      <span className="arrow"><ArrowRight /></span>
+                      <span className="pattern">{activeVersion.snapshot.pattern.replace(/_/g, ' ')}</span>
+                    </>
+                  )}
+                </div>
+                <div className="dates">
+                  {formatDate(firstVersion.timestamp)}
+                  {selectedIdea.versions.length > 1 && ` → ${formatDate(activeVersion.timestamp)}`}
+                </div>
+              </EvolutionContent>
+            </InsightBlock>
+            
+            {/* 2. Probability */}
+            <InsightBlock data-testid="probability-block">
+              <div className="label">Probability</div>
+              <ProbContent>
+                <div className="row">
+                  <span className="label">AI Breakout</span>
+                  <span className="value up">
+                    <TrendingUp />
+                    {Math.round(activeVersion.snapshot.probability.up * 100)}%
+                    {selectedIdea.versions.length > 1 && (
+                      <span className={`change ${activeVersion.snapshot.probability.up > firstVersion.snapshot.probability.up ? 'positive' : 'negative'}`}>
+                        {activeVersion.snapshot.probability.up > firstVersion.snapshot.probability.up ? '+' : ''}
+                        {Math.round((activeVersion.snapshot.probability.up - firstVersion.snapshot.probability.up) * 100)}%
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div className="row">
+                  <span className="label">AI Breakdown</span>
+                  <span className="value down">
+                    <TrendingDown />
+                    {Math.round(activeVersion.snapshot.probability.down * 100)}%
+                  </span>
+                </div>
+                <div className="row">
+                  <span className="label">Confidence</span>
+                  <span className="value" style={{ color: '#f1f5f9' }}>
+                    {Math.round(activeVersion.snapshot.confidence * 100)}%
+                  </span>
+                </div>
+              </ProbContent>
+            </InsightBlock>
+            
+            {/* 3. Key Levels */}
+            <InsightBlock data-testid="levels-block">
+              <div className="label">Key Levels</div>
+              <LevelsContent>
+                <div className="level">
+                  <span className="label breakout">Breakout</span>
+                  <span className="price">{formatPrice(activeVersion.snapshot.levels?.top)}</span>
+                </div>
+                <div className="level">
+                  <span className="label invalidation">Invalidation</span>
+                  <span className="price">{formatPrice(activeVersion.snapshot.levels?.bottom)}</span>
+                </div>
+              </LevelsContent>
+            </InsightBlock>
+            
+            {/* 4. What Next */}
+            <InsightBlock data-testid="what-next-block">
+              <div className="label">What Next</div>
+              <WhatNextContent>
+                <div className="text">
+                  <Target />
+                  {buildWhatNext(activeVersion.snapshot.levels, activeVersion.snapshot.lifecycle, selectedIdea.outcome)}
+                </div>
+              </WhatNextContent>
+            </InsightBlock>
+            
+            {/* 5. Score */}
+            <InsightBlock data-testid="score-block">
+              <div className="label">Result</div>
+              <ScoreContent $positive={selectedIdea.score > 0 ? true : selectedIdea.score < 0 ? false : null}>
+                <div className="info">
+                  <div className="result">
+                    {selectedIdea.score > 0 ? 'Correct' : selectedIdea.score < 0 ? 'Wrong' : 'Pending'}
+                  </div>
+                  <div className="impact">Accuracy impact</div>
+                </div>
+                <div className="score">
+                  {selectedIdea.score > 0 ? '+1' : selectedIdea.score < 0 ? '-1' : '—'}
+                </div>
+              </ScoreContent>
+            </InsightBlock>
+            
+            {/* 6. Version Timeline */}
+            <InsightBlock data-testid="timeline-block">
+              <div className="label">Version Timeline</div>
+              <TimelineContent>
+                <div className="header">
                   {selectedIdea.versions.length > 1 && (
                     <ActionBtn
                       onClick={handleReplay}
-                      data-testid="replay-btn"
-                      disabled={selectedIdea.versions.length < 2}
+                      data-testid="timeline-replay-btn"
+                      style={{ padding: '4px 10px', fontSize: 10 }}
                     >
-                      {isReplaying ? <><Square size={12} /> Stop</> : <><Play size={12} /> Replay</>}
+                      {isReplaying ? <><Square size={10} /> Stop</> : <><Play size={10} /> Replay</>}
                     </ActionBtn>
                   )}
-                </DetailActions>
-              </DetailHeader>
-              
-              <DetailContent>
-                {/* EVOLUTION */}
-                <InfoSection>
-                  <div className="section-label">Evolution</div>
-                  <EvolutionCard data-testid="evolution-card">
-                    <div className="main">
-                      <span className="pattern">{firstVersion.snapshot.pattern.replace(/_/g, ' ')}</span>
-                      {selectedIdea.versions.length > 1 && (
-                        <>
-                          <span className="arrow"><ArrowRight /></span>
-                          <span className="pattern">{activeVersion.snapshot.pattern.replace(/_/g, ' ')}</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="dates">
-                      {formatDate(firstVersion.timestamp)}
-                      {selectedIdea.versions.length > 1 && ` → ${formatDate(activeVersion.timestamp)}`}
-                    </div>
-                  </EvolutionCard>
-                </InfoSection>
-                
-                {/* INTERPRETATION */}
-                <InfoSection>
-                  <div className="section-label">Core Insight</div>
-                  <InterpretationCard data-testid="interpretation-card">
-                    <div className="text">
-                      {buildInterpretation(firstVersion, selectedIdea.versions.length > 1 ? activeVersion : null, selectedIdea.outcome)}
-                    </div>
-                  </InterpretationCard>
-                </InfoSection>
-                
-                {/* PROBABILITY */}
-                <InfoSection>
-                  <div className="section-label">Probability</div>
-                  <ProbabilityCard data-testid="probability-card">
-                    <div className="row">
-                      <span className="label">AI Breakout</span>
-                      <span className="value up">
-                        <TrendingUp />
-                        {Math.round(activeVersion.snapshot.probability.up * 100)}%
-                        {selectedIdea.versions.length > 1 && (
-                          <span className={`change ${activeVersion.snapshot.probability.up > firstVersion.snapshot.probability.up ? 'positive' : 'negative'}`}>
-                            {activeVersion.snapshot.probability.up > firstVersion.snapshot.probability.up ? '+' : ''}
-                            {Math.round((activeVersion.snapshot.probability.up - firstVersion.snapshot.probability.up) * 100)}%
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                    <div className="row">
-                      <span className="label">AI Breakdown</span>
-                      <span className="value down">
-                        <TrendingDown />
-                        {Math.round(activeVersion.snapshot.probability.down * 100)}%
-                      </span>
-                    </div>
-                    <div className="row">
-                      <span className="label">Confidence</span>
-                      <span className="value">
-                        {Math.round(activeVersion.snapshot.confidence * 100)}%
-                      </span>
-                    </div>
-                  </ProbabilityCard>
-                </InfoSection>
-                
-                {/* LEVELS */}
-                <InfoSection>
-                  <div className="section-label">Key Levels</div>
-                  <LevelsCard data-testid="levels-card">
-                    <div className="level">
-                      <span className="label breakout">Breakout</span>
-                      <span className="price">{formatPrice(activeVersion.snapshot.levels?.top)}</span>
-                    </div>
-                    <div className="level">
-                      <span className="label invalidation">Invalidation</span>
-                      <span className="price">{formatPrice(activeVersion.snapshot.levels?.bottom)}</span>
-                    </div>
-                  </LevelsCard>
-                </InfoSection>
-                
-                {/* WHAT NEXT */}
-                <InfoSection>
-                  <div className="section-label">What Next</div>
-                  <WhatNextCard data-testid="what-next-card">
-                    <div className="text">
-                      <Target />
-                      {buildWhatNext(activeVersion.snapshot.levels, activeVersion.snapshot.lifecycle, selectedIdea.outcome)}
-                    </div>
-                  </WhatNextCard>
-                </InfoSection>
-                
-                {/* SCORE */}
-                {selectedIdea.score !== 0 && (
-                  <InfoSection>
-                    <div className="section-label">Score</div>
-                    <ScoreCard $positive={selectedIdea.score > 0} data-testid="score-card">
-                      <span className="label">Accuracy impact</span>
-                      <span className="score">{selectedIdea.score > 0 ? '+1' : '-1'}</span>
-                    </ScoreCard>
-                  </InfoSection>
-                )}
-                
-                {/* VERSION TIMELINE */}
-                <InfoSection>
-                  <TimelineCard data-testid="timeline-card">
-                    <div className="header">
-                      <span className="label">Version Timeline</span>
-                      {selectedIdea.versions.length > 1 && (
-                        <ReplayControls>
-                          <ActionBtn
-                            onClick={handleReplay}
-                            data-testid="timeline-replay-btn"
-                          >
-                            {isReplaying ? <><Square size={11} /> Stop</> : <><Play size={11} /> Replay</>}
-                          </ActionBtn>
-                        </ReplayControls>
-                      )}
-                    </div>
-                    <VersionButtons>
-                      {selectedIdea.versions.map((v, i) => (
-                        <VersionBtn
-                          key={v.v}
-                          $active={activeVersionIndex === i}
-                          onClick={() => {
-                            // Stop replay if clicking manually
-                            if (replayIntervalRef.current) {
-                              clearInterval(replayIntervalRef.current);
-                              replayIntervalRef.current = null;
-                              setIsReplaying(false);
-                            }
-                            setActiveVersionIndex(i);
-                          }}
-                          data-testid={`version-btn-v${v.v}`}
-                        >
-                          <span className="version">V{v.v}</span>
-                          <span className="date">{formatDate(v.timestamp)}</span>
-                        </VersionBtn>
-                      ))}
-                    </VersionButtons>
-                  </TimelineCard>
-                </InfoSection>
-              </DetailContent>
-            </>
-          ) : (
-            <EmptyState style={{ flex: 1, justifyContent: 'center' }}>
-              <Sparkles />
-              <h4>Track your ideas</h4>
-              <p>See how your predictions evolve over time</p>
-            </EmptyState>
-          )}
-        </DetailPanel>
-      </RightPanel>
+                </div>
+                <div className="versions">
+                  {selectedIdea.versions.map((v, i) => (
+                    <VersionBtn
+                      key={v.v}
+                      $active={activeVersionIndex === i}
+                      onClick={() => {
+                        if (replayIntervalRef.current) {
+                          clearInterval(replayIntervalRef.current);
+                          replayIntervalRef.current = null;
+                          setIsReplaying(false);
+                        }
+                        setActiveVersionIndex(i);
+                      }}
+                      data-testid={`version-btn-v${v.v}`}
+                    >
+                      <span className="version">V{v.v}</span>
+                      <span className="date">{formatDate(v.timestamp)}</span>
+                    </VersionBtn>
+                  ))}
+                </div>
+              </TimelineContent>
+            </InsightBlock>
+          </InsightGrid>
+        </InsightPanel>
+      )}
     </Container>
   );
 };

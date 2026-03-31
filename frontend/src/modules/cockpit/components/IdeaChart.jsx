@@ -20,9 +20,9 @@ import IdeaChartOverlay from './IdeaChartOverlay';
 const ChartWrapper = styled.div`
   position: relative;
   width: 100%;
-  background: #ffffff;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  background: #0B0F14;
+  border-radius: 16px;
+  border: 1px solid #1e293b;
   overflow: hidden;
 `;
 
@@ -33,34 +33,36 @@ const ChartContainer = styled.div`
 
 const ChartModeBadge = styled.div`
   position: absolute;
-  top: 12px;
-  left: 12px;
+  top: 16px;
+  left: 16px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  background: rgba(59, 130, 246, 0.95);
-  color: #ffffff;
-  border-radius: 8px;
+  padding: 8px 14px;
+  background: rgba(59, 130, 246, 0.2);
+  backdrop-filter: blur(8px);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 10px;
   font-size: 12px;
   font-weight: 700;
   z-index: 20;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
   pointer-events: none;
 `;
 
 const VersionBadge = styled.div`
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 16px;
+  right: 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: rgba(15, 23, 42, 0.9);
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(17, 24, 39, 0.9);
   backdrop-filter: blur(8px);
-  color: #ffffff;
-  border-radius: 8px;
+  border: 1px solid #334155;
+  color: #f1f5f9;
+  border-radius: 10px;
   font-size: 12px;
   font-weight: 600;
   z-index: 20;
@@ -68,7 +70,7 @@ const VersionBadge = styled.div`
   
   .pattern {
     text-transform: capitalize;
-    color: #93c5fd;
+    color: #60a5fa;
   }
   
   .confidence {
@@ -80,27 +82,28 @@ const VersionBadge = styled.div`
 
 const ReplayIndicator = styled.div`
   position: absolute;
-  bottom: 12px;
+  bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  background: rgba(59, 130, 246, 0.95);
-  color: #ffffff;
-  border-radius: 20px;
+  gap: 10px;
+  padding: 10px 20px;
+  background: rgba(59, 130, 246, 0.2);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+  border-radius: 24px;
   font-size: 12px;
   font-weight: 600;
   z-index: 20;
-  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.4);
   pointer-events: none;
   
   .dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #ffffff;
+    background: #60a5fa;
     animation: pulse 0.6s ease-in-out infinite;
   }
   
@@ -112,19 +115,20 @@ const ReplayIndicator = styled.div`
 
 const PerformanceBadge = styled.div`
   position: absolute;
-  top: 12px;
-  left: 12px;
+  top: 16px;
+  left: 16px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  background: rgba(139, 92, 246, 0.95);
-  color: #ffffff;
-  border-radius: 8px;
+  padding: 8px 14px;
+  background: rgba(139, 92, 246, 0.2);
+  backdrop-filter: blur(8px);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 10px;
   font-size: 12px;
   font-weight: 700;
   z-index: 20;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
   pointer-events: none;
 `;
 
@@ -373,26 +377,26 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
       width: w,
       height,
       layout: {
-        background: { type: 'solid', color: '#ffffff' },
-        textColor: '#94a3b8',
+        background: { type: 'solid', color: '#0B0F14' },
+        textColor: '#64748b',
         fontFamily: "'Inter', -apple-system, sans-serif",
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: '#f8fafc' },
-        horzLines: { color: '#f8fafc' },
+        vertLines: { color: '#1e293b' },
+        horzLines: { color: '#1e293b' },
       },
       crosshair: {
         mode: 1,
-        vertLine: { color: '#cbd5e1', style: 2, width: 1 },
-        horzLine: { color: '#cbd5e1', style: 2, width: 1 },
+        vertLine: { color: '#475569', style: 2, width: 1 },
+        horzLine: { color: '#475569', style: 2, width: 1 },
       },
       rightPriceScale: {
-        borderColor: '#f1f5f9',
+        borderColor: '#1e293b',
         scaleMargins: { top: 0.12, bottom: 0.12 },
       },
       timeScale: {
-        borderColor: '#f1f5f9',
+        borderColor: '#1e293b',
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 20,
@@ -404,12 +408,12 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     setDimensions({ width: w, height });
     
     const priceSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#e2e8f0',
-      downColor: '#cbd5e1',
-      borderUpColor: '#cbd5e1',
-      borderDownColor: '#94a3b8',
-      wickUpColor: '#cbd5e1',
-      wickDownColor: '#94a3b8',
+      upColor: '#334155',
+      downColor: '#1e293b',
+      borderUpColor: '#475569',
+      borderDownColor: '#334155',
+      wickUpColor: '#475569',
+      wickDownColor: '#334155',
       lastValueVisible: false,
       priceLineVisible: false,
     });

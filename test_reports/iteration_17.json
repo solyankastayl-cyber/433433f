@@ -1,0 +1,43 @@
+{
+  "summary": "Completed comprehensive testing of Ideas mode refactor - Graph-first UI with horizontal selector strip, full-width chart, and 6-section bottom panel working successfully",
+  "backend_issues": {},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "component": "ETH Idea Chip",
+        "issue": "ETH idea chip not consistently clickable during automated testing",
+        "selector": "[data-testid*=\"idea-chip-\"]:has-text(\"ETH\")",
+        "fix_priority": "LOW",
+        "note": "BTC and SOL chips work fine, may be UI state or filtering related"
+      }
+    ],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Ideas tab accessible via Tech Analysis navigation",
+    "Horizontal Idea Selector Strip displays 3 ideas (BTC, ETH, SOL)",
+    "Filter buttons work (All, Active, Win, Loss) - all clickable",
+    "Full-width graph displays with dark theme (#0B0F14)",
+    "BTC and SOL idea chips update graph and details instantly",
+    "IDEA MODE badge visible on chart (top left)",
+    "Version badge (V2 - Triangle 78%) visible on chart (top right)",
+    "Bottom Insight Panel has all 6 sections working",
+    "Evolution block shows pattern → pattern (Rectangle → Triangle)",
+    "Probability block shows AI Breakout 78% and Breakdown 18%",
+    "Key Levels block shows Breakout $73,500 and Invalidation $68,200",
+    "Replay button works and shows replay indicator",
+    "Chart mode toggle (Idea/Performance) works perfectly",
+    "Version buttons (V1/V2) work and update chart badge",
+    "What Next section shows actionable guidance",
+    "Result section shows correct score (+1) and accuracy impact",
+    "Dark theme implementation throughout UI",
+    "Graph-first architecture successfully implemented"
+  ],
+  "test_report_links": [],
+  "success_percentage": "frontend: 95%",
+  "updated_files": [],
+  "action_item_for_main_agent": "",
+  "should_call_test_agent_after_fix": "false",
+  "should_main_agent_test_itself": "true"
+}
