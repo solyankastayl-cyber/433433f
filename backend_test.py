@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """
-Backend API Testing for Trading Application
-==========================================
-
-Tests the key API endpoints:
-1. /api/health - Health check
-2. /api/ta-engine/pattern-v2/BTC - Pattern detection API
-3. Timeframe functionality
+Backend API Testing for TA Engine - Chart Integration
+=====================================================
+Testing all backend endpoints and functionality
 """
 
 import requests
@@ -14,191 +10,234 @@ import sys
 import json
 from datetime import datetime
 
-class TradingAPITester:
-    def __init__(self, base_url="https://project-build-46.preview.emergentagent.com"):
+class TAEngineAPITester:
+    def __init__(self, base_url="https://task-completion-47.preview.emergentagent.com"):
         self.base_url = base_url
         self.tests_run = 0
         self.tests_passed = 0
         self.results = []
 
-    def log_result(self, test_name, success, details="", response_data=None):
-        """Log test result"""
+    def run_test(self, name, method, endpoint, expected_status=200, data=None, headers=None):
+        """Run a single API test"""
+        url = f"{self.base_url}/{endpoint}"
+        if headers is None:
+            headers = {'Content-Type': 'application/json'}
+
         self.tests_run += 1
-        if success:
-            self.tests_passed += 1
+        print(f"\n🔍 Testing {name}...")
+        print(f"   URL: {url}")
         
-        result = {
-            "test": test_name,
-            "success": success,
-            "details": details,
-            "timestamp": datetime.now().isoformat()
-        }
-        if response_data:
-            result["response_sample"] = response_data
-        
-        self.results.append(result)
-        
-        status = "✅ PASS" if success else "❌ FAIL"
-        print(f"{status} - {test_name}")
-        if details:
-            print(f"    {details}")
-
-    def test_health_endpoint(self):
-        """Test /api/health endpoint"""
         try:
-            url = f"{self.base_url}/api/health"
-            response = requests.get(url, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("ok") is True:
-                    self.log_result(
-                        "Health endpoint returns ok:true", 
-                        True, 
-                        f"Status: {response.status_code}, Response: {data}",
-                        data
-                    )
-                    return True
-                else:
-                    self.log_result(
-                        "Health endpoint returns ok:true", 
-                        False, 
-                        f"Expected ok:true, got: {data}"
-                    )
+            if method == 'GET':
+                response = requests.get(url, headers=headers, timeout=10)
+            elif method == 'POST':
+                response = requests.post(url, json=data, headers=headers, timeout=10)
             else:
-                self.log_result(
-                    "Health endpoint returns ok:true", 
-                    False, 
-                    f"HTTP {response.status_code}: {response.text[:200]}"
-                )
-        except Exception as e:
-            self.log_result(
-                "Health endpoint returns ok:true", 
-                False, 
-                f"Request failed: {str(e)}"
-            )
-        return False
+                response = requests.request(method, url, json=data, headers=headers, timeout=10)
 
-    def test_pattern_api(self, symbol="BTC", timeframe="4H"):
-        """Test /api/ta-engine/pattern-v2/{symbol} endpoint"""
-        try:
-            url = f"{self.base_url}/api/ta-engine/pattern-v2/{symbol}"
-            params = {"timeframe": timeframe}
+            success = response.status_code == expected_status
             
-            response = requests.get(url, params=params, timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
+            result = {
+                "name": name,
+                "method": method,
+                "endpoint": endpoint,
+                "expected_status": expected_status,
+                "actual_status": response.status_code,
+                "success": success,
+                "response_size": len(response.text),
+                "has_json": False,
+                "response_data": None
+            }
+
+            if success:
+                self.tests_passed += 1
+                print(f"✅ Passed - Status: {response.status_code}")
                 
-                # Check if response has expected structure
-                has_patterns = bool(data.get("dominant") or data.get("primary_pattern"))
-                has_ok_status = data.get("ok") is True
-                
-                if has_ok_status and has_patterns:
-                    pattern_info = data.get("dominant") or data.get("primary_pattern") or {}
-                    pattern_type = pattern_info.get("type", "unknown")
-                    confidence = pattern_info.get("confidence", 0)
+                # Try to parse JSON response
+                try:
+                    json_data = response.json()
+                    result["has_json"] = True
+                    result["response_data"] = json_data
                     
-                    self.log_result(
-                        f"Pattern API /api/ta-engine/pattern-v2/{symbol} works and returns patterns",
-                        True,
-                        f"Pattern: {pattern_type}, Confidence: {confidence:.2f}",
-                        {
-                            "pattern_type": pattern_type,
-                            "confidence": confidence,
-                            "timeframe": timeframe
-                        }
-                    )
-                    return True
-                else:
-                    self.log_result(
-                        f"Pattern API /api/ta-engine/pattern-v2/{symbol} works and returns patterns",
-                        False,
-                        f"Missing patterns or ok status. Keys: {list(data.keys())}"
-                    )
+                    # Print key info for important endpoints
+                    if endpoint == "api/health":
+                        print(f"   Health: {json_data.get('ok', False)}, Mode: {json_data.get('mode', 'unknown')}")
+                    elif "candles" in endpoint:
+                        candles = json_data.get('candles', [])
+                        print(f"   Candles: {len(candles)} records")
+                    elif "fractal" in endpoint:
+                        print(f"   Fractal data: {json_data.get('ok', False)}")
+                        
+                except:
+                    print(f"   Response: {response.text[:100]}...")
+                    
             else:
-                self.log_result(
-                    f"Pattern API /api/ta-engine/pattern-v2/{symbol} works and returns patterns",
-                    False,
-                    f"HTTP {response.status_code}: {response.text[:200]}"
-                )
+                print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
+                print(f"   Response: {response.text[:200]}...")
+
+            self.results.append(result)
+            return success, result.get("response_data", {})
+
+        except requests.exceptions.Timeout:
+            print(f"❌ Failed - Request timeout (10s)")
+            self.results.append({**result, "success": False, "error": "timeout"})
+            return False, {}
         except Exception as e:
-            self.log_result(
-                f"Pattern API /api/ta-engine/pattern-v2/{symbol} works and returns patterns",
-                False,
-                f"Request failed: {str(e)}"
-            )
-        return False
+            print(f"❌ Failed - Error: {str(e)}")
+            self.results.append({**result, "success": False, "error": str(e)})
+            return False, {}
 
-    def test_timeframe_functionality(self, symbol="BTC"):
-        """Test different timeframes work properly"""
-        timeframes = ["4H", "1D", "7D", "1M", "6M", "1Y"]
-        successful_timeframes = []
+    def test_core_endpoints(self):
+        """Test core backend endpoints"""
+        print("\n" + "="*60)
+        print("TESTING CORE BACKEND ENDPOINTS")
+        print("="*60)
         
-        for tf in timeframes:
-            try:
-                url = f"{self.base_url}/api/ta-engine/pattern-v2/{symbol}"
-                params = {"timeframe": tf}
-                
-                response = requests.get(url, params=params, timeout=30)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("ok"):
-                        successful_timeframes.append(tf)
-                        print(f"    ✓ {tf} timeframe working")
-                    else:
-                        print(f"    ✗ {tf} timeframe returned ok:false")
-                else:
-                    print(f"    ✗ {tf} timeframe HTTP {response.status_code}")
-            except Exception as e:
-                print(f"    ✗ {tf} timeframe failed: {str(e)}")
+        # Health check
+        self.run_test("Health Check", "GET", "api/health")
         
-        success = len(successful_timeframes) >= 4  # At least 4 out of 6 should work
-        self.log_result(
-            "Timeframe switcher (4H, 1D, 7D, 1M, 6M, 1Y) works properly",
-            success,
-            f"Working timeframes: {successful_timeframes} ({len(successful_timeframes)}/6)",
-            {"working_timeframes": successful_timeframes}
-        )
-        return success
+        # System health
+        self.run_test("System Health", "GET", "api/system/health")
+        
+        # Database health
+        self.run_test("Database Health", "GET", "api/system/db-health")
+        
+        return True
 
-    def run_all_tests(self):
-        """Run all backend tests"""
-        print("=" * 60)
-        print("BACKEND API TESTING")
-        print("=" * 60)
+    def test_chart_data_endpoints(self):
+        """Test chart data endpoints"""
+        print("\n" + "="*60)
+        print("TESTING CHART DATA ENDPOINTS")
+        print("="*60)
         
-        # Test 1: Health endpoint
-        self.test_health_endpoint()
+        # UI Candles
+        self.run_test("UI Candles (BTC)", "GET", "api/ui/candles?asset=BTC&days=30")
         
-        # Test 2: Pattern API for BTC
-        self.test_pattern_api("BTC", "4H")
+        # Market Candles
+        self.run_test("Market Candles", "GET", "api/market/candles?symbol=BTCUSDT&date_range=7d")
         
-        # Test 3: Timeframe functionality
-        self.test_timeframe_functionality("BTC")
+        # Fractal Chart
+        self.run_test("Fractal Chart", "GET", "api/fractal/v2.1/chart?symbol=BTC&limit=100")
         
-        # Summary
-        print("\n" + "=" * 60)
+        # Fractal Signal
+        self.run_test("Fractal Signal", "GET", "api/fractal/v2.1/signal?symbol=BTC")
+        
+        return True
+
+    def test_ta_analysis_endpoints(self):
+        """Test TA analysis endpoints"""
+        print("\n" + "="*60)
+        print("TESTING TA ANALYSIS ENDPOINTS")
+        print("="*60)
+        
+        # TA Registry
+        self.run_test("TA Registry", "GET", "api/ta/registry")
+        
+        # TA Patterns
+        self.run_test("TA Patterns", "GET", "api/ta/patterns")
+        
+        # TA Analysis
+        self.run_test("TA Analysis", "POST", "api/ta/analyze", data={"symbol": "BTCUSDT", "timeframe": "1d"})
+        
+        return True
+
+    def test_provider_endpoints(self):
+        """Test data provider endpoints"""
+        print("\n" + "="*60)
+        print("TESTING DATA PROVIDER ENDPOINTS")
+        print("="*60)
+        
+        # Provider list
+        self.run_test("Provider List", "GET", "api/provider/list")
+        
+        # Coinbase status
+        self.run_test("Coinbase Status", "GET", "api/provider/coinbase/status")
+        
+        # Coinbase health
+        self.run_test("Coinbase Health", "GET", "api/provider/coinbase/health")
+        
+        # Coinbase ticker
+        self.run_test("Coinbase Ticker", "GET", "api/provider/coinbase/ticker/BTC")
+        
+        return True
+
+    def test_advanced_endpoints(self):
+        """Test advanced analysis endpoints"""
+        print("\n" + "="*60)
+        print("TESTING ADVANCED ANALYSIS ENDPOINTS")
+        print("="*60)
+        
+        # Forecast
+        self.run_test("Forecast BTC", "GET", "api/forecast/BTC")
+        
+        # Fractal Summary
+        self.run_test("Fractal Summary", "GET", "api/fractal/summary/BTC")
+        
+        # Exchange Pressure
+        self.run_test("Exchange Pressure", "GET", "api/exchange/pressure?network=ethereum")
+        
+        # Signals Attribution
+        self.run_test("Signals Attribution", "GET", "api/advanced/signals-attribution")
+        
+        return True
+
+    def print_summary(self):
+        """Print test summary"""
+        print("\n" + "="*60)
         print("TEST SUMMARY")
-        print("=" * 60)
-        print(f"Tests run: {self.tests_run}")
-        print(f"Tests passed: {self.tests_passed}")
-        print(f"Success rate: {(self.tests_passed/self.tests_run*100):.1f}%")
+        print("="*60)
         
-        # Show failed tests
-        failed_tests = [r for r in self.results if not r["success"]]
-        if failed_tests:
-            print("\nFAILED TESTS:")
-            for test in failed_tests:
-                print(f"  ❌ {test['test']}: {test['details']}")
+        print(f"📊 Tests run: {self.tests_run}")
+        print(f"✅ Tests passed: {self.tests_passed}")
+        print(f"❌ Tests failed: {self.tests_run - self.tests_passed}")
+        print(f"📈 Success rate: {(self.tests_passed/self.tests_run*100):.1f}%")
+        
+        # Group results by success
+        passed = [r for r in self.results if r["success"]]
+        failed = [r for r in self.results if not r["success"]]
+        
+        if passed:
+            print(f"\n✅ PASSED TESTS ({len(passed)}):")
+            for result in passed:
+                print(f"   • {result['name']} - {result['method']} {result['endpoint']}")
+        
+        if failed:
+            print(f"\n❌ FAILED TESTS ({len(failed)}):")
+            for result in failed:
+                error_info = f" ({result.get('error', 'status error')})" if result.get('error') else f" (got {result['actual_status']})"
+                print(f"   • {result['name']} - {result['method']} {result['endpoint']}{error_info}")
         
         return self.tests_passed == self.tests_run
 
 def main():
-    tester = TradingAPITester()
-    success = tester.run_all_tests()
-    return 0 if success else 1
+    """Main test runner"""
+    print("TA Engine - Chart Integration Backend Testing")
+    print("=" * 60)
+    print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    tester = TAEngineAPITester()
+    
+    # Run all test suites
+    try:
+        tester.test_core_endpoints()
+        tester.test_chart_data_endpoints()
+        tester.test_ta_analysis_endpoints()
+        tester.test_provider_endpoints()
+        tester.test_advanced_endpoints()
+        
+        # Print final summary
+        all_passed = tester.print_summary()
+        
+        print(f"\nCompleted at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        return 0 if all_passed else 1
+        
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Testing interrupted by user")
+        return 1
+    except Exception as e:
+        print(f"\n\n💥 Testing failed with error: {str(e)}")
+        return 1
 
 if __name__ == "__main__":
     sys.exit(main())

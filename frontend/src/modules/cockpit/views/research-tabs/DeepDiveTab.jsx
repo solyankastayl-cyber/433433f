@@ -232,7 +232,7 @@ const DeepDiveTab = ({
           color: '#475569',
           lineHeight: '1.6'
         }}>
-          <strong>Regime:</strong> {regime} · <strong>Quality:</strong> {quality}
+          <strong>Regime:</strong> {regime.replace(/_/g, ' ')} · <strong>Quality:</strong> {quality.replace(/_/g, ' ')}
           {setupData?.interpretation && (
             <div style={{ marginTop: '8px' }}>{setupData.interpretation}</div>
           )}

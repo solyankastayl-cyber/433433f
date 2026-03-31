@@ -543,7 +543,7 @@ const ExecutionTab = ({
           </SetupItem>
           <SetupItem $highlight={quality}>
             <div className="label">Quality</div>
-            <div className="value">{quality}</div>
+            <div className="value">{quality.replace(/_/g, ' ')}</div>
           </SetupItem>
         </SetupCard>
       </Card>

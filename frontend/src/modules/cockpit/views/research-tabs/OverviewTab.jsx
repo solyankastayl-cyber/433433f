@@ -747,7 +747,7 @@ const OverviewTab = ({
                 fontWeight: 600,
                 textTransform: 'uppercase',
               }}>
-                {direction}
+                {direction.replace(/_/g, ' ')}
               </span>
               <span>·</span>
               <span>{confidence}% confidence</span>
