@@ -53,13 +53,30 @@
   - `IdeasView.jsx`: Updated Container, LeftPanel, RightPanel with proper `max-height` and scrolling; removed `max-height` restrictions from CardContent and DetailContent
 - **Result:** Full visibility of all 3 idea cards (BTC, ETH, SOL), PROBABILITY, KEY LEVELS, VERSION TIMELINE sections
 
-## Testing Status (iteration_14)
+### March 31, 2026 - P1 Features (Current Session)
+- **WebSocket для real-time оновлень:**
+  - Додано `ConnectionManager` в `server.py`
+  - Endpoint `/api/ws/market` для підключень
+  - Підтримка subscribe/heartbeat/price/candle повідомлень
+  - `useChartRealtime` хук (вже існував)
+  
+- **Збереження zoom preferences користувача:**
+  - Створено `useChartPreferences.js` хук
+  - Зберігає в localStorage під ключем `ta_engine_chart_preferences`
+  - Структура: `{ symbols: { BTC: { 4H: { visibleRange, visibleBars } } }, global: { overlays } }`
+  - ResearchChart використовує savedZoom при завантаженні
+  
+- **Анімації переходів таймфреймів:**
+  - CSS keyframes `fadeIn` для ChartWrapper
+  - TfButton з `transition: 0.25s cubic-bezier`, `transform: scale`, `box-shadow`
+  - Active indicator (::after pseudo-element) з зеленим підкресленням
+
+## Testing Status (iteration_15)
 - ✅ Backend: 100%
 - ✅ Frontend: 100%  
-- ✅ Ideas tab: All 3 cards visible, complete functionality
-- ✅ Layout: No cut-off issues, proper scrolling
-- ✅ Chart: Triangle pattern 78% displayed correctly
-- ✅ All interactive elements working
+- ✅ WebSocket: 100% (connection and subscription working)
+- ✅ Animations: 100% (timeframe button animations working)
+- ✅ localStorage: 100% (zoom preferences storage working)
 
 ## Prioritized Backlog
 
@@ -69,17 +86,18 @@
 - ✅ Underscore formatting fixes
 - ✅ Ideas mode layout fixes
 
-### P1 (High Priority)
-- [ ] User preference to remember zoom level
-- [ ] WebSocket for real-time chart updates
+### P1 (Completed - March 31, 2026)
+- ✅ **WebSocket for real-time chart updates** - `/api/ws/market` endpoint with ConnectionManager
+- ✅ **User zoom preferences** - `useChartPreferences` hook saves to localStorage per symbol/timeframe
+- ✅ **Timeframe transition animations** - CSS keyframes fadeIn, scale effects, active indicator
 
 ### P2 (Medium Priority)
-- [ ] Animation for timeframe transitions
 - [ ] Keyboard shortcuts for timeframe switching
+- [ ] Mobile responsive improvements
 
 ### P3 (Low Priority)
 - [ ] Additional pattern types
-- [ ] Mobile responsive improvements
+- [ ] Push notifications for idea status changes
 
 ## Next Tasks
 1. Monitor user feedback on Ideas mode layout
