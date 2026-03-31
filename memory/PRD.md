@@ -71,12 +71,23 @@
   - TfButton з `transition: 0.25s cubic-bezier`, `transform: scale`, `box-shadow`
   - Active indicator (::after pseudo-element) з зеленим підкресленням
 
-## Testing Status (iteration_15)
-- ✅ Backend: 100%
-- ✅ Frontend: 100%  
-- ✅ WebSocket: 100% (connection and subscription working)
-- ✅ Animations: 100% (timeframe button animations working)
-- ✅ localStorage: 100% (zoom preferences storage working)
+### March 31, 2026 - Ideas Mode UI Fix (Current Session Continued)
+- **IDEAS list layout fix:**
+  - Minimum 3 full cards visible (BTC, ETH, SOL)
+  - CardContent: min-height/max-height 520px with overflow-y:auto
+  - Left panel width increased to 380px for better card display
+- **Accuracy card compact:**
+  - Single row layout with 50% + W:1 L:1 All:3 + streak
+  - Removed CardHeader to save space
+- **Chart height increased:**
+  - IdeaChart height 400px for symmetry with left panel
+  - Both panels balanced in height
+
+## Testing Status (iteration_16)
+- ✅ Frontend: 95%
+- ✅ Ideas display: 100% (3+ cards visible)
+- ✅ Scroll functionality: 100%
+- ✅ UI layout: 100%
 
 ## Prioritized Backlog
 
