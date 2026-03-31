@@ -12,9 +12,11 @@ from pydantic import BaseModel
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from fastapi import FastAPI, HTTPException, Header, Query
+from fastapi import FastAPI, HTTPException, Header, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
+from typing import Optional, List, Dict
+import asyncio
+import json
 
 
 class LoginRequest(BaseModel):
@@ -97,6 +99,99 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================
+# WebSocket Manager for Real-time Updates
+# ============================================
+
+class ConnectionManager:
+    """Manage WebSocket connections for real-time market updates"""
+    
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+        self._price_cache: Dict[str, float] = {}
+    
+    async def connect(self, websocket: WebSocket, channel: str = "market"):
+        await websocket.accept()
+        if channel not in self.active_connections:
+            self.active_connections[channel] = []
+        self.active_connections[channel].append(websocket)
+    
+    def disconnect(self, websocket: WebSocket, channel: str = "market"):
+        if channel in self.active_connections:
+            if websocket in self.active_connections[channel]:
+                self.active_connections[channel].remove(websocket)
+    
+    async def broadcast(self, message: dict, channel: str = "market"):
+        if channel in self.active_connections:
+            disconnected = []
+            for connection in self.active_connections[channel]:
+                try:
+                    await connection.send_json(message)
+                except:
+                    disconnected.append(connection)
+            # Clean up disconnected
+            for conn in disconnected:
+                self.disconnect(conn, channel)
+    
+    async def send_price_update(self, symbol: str, price: float, change: float = 0):
+        self._price_cache[symbol] = price
+        await self.broadcast({
+            "type": "price",
+            "symbol": symbol,
+            "price": price,
+            "change": change,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+    
+    async def send_candle_update(self, symbol: str, timeframe: str, candle: dict):
+        await self.broadcast({
+            "type": "candle",
+            "symbol": symbol,
+            "timeframe": timeframe,
+            **candle,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+
+
+ws_manager = ConnectionManager()
+
+
+@app.websocket("/api/ws/market")
+async def websocket_market(websocket: WebSocket):
+    """WebSocket endpoint for real-time market data"""
+    await ws_manager.connect(websocket, "market")
+    
+    try:
+        # Send connection confirmation
+        await websocket.send_json({"type": "connected", "channel": "market"})
+        
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=30)
+                
+                if data.get("type") == "subscribe":
+                    symbol = data.get("symbol", "BTCUSDT")
+                    timeframe = data.get("timeframe", "4H")
+                    await websocket.send_json({
+                        "type": "subscribed",
+                        "symbol": symbol,
+                        "timeframe": timeframe
+                    })
+                elif data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    
+            except asyncio.TimeoutError:
+                # Send heartbeat
+                await websocket.send_json({"type": "heartbeat"})
+            except WebSocketDisconnect:
+                break
+                
+    except Exception as e:
+        print(f"[WS] Error: {e}")
+    finally:
+        ws_manager.disconnect(websocket, "market")
 
 
 @app.get("/api/health")

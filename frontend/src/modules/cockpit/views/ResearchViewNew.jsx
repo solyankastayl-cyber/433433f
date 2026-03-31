@@ -242,11 +242,34 @@ const TfButton = styled.button`
   background: ${({ $active }) => $active ? '#ffffff' : 'transparent'};
   color: ${({ $active }) => $active ? '#0f172a' : '#64748b'};
   cursor: pointer;
-  box-shadow: ${({ $active }) => $active ? '0 1px 3px rgba(0,0,0,0.08)' : 'none'};
-  transition: all 0.15s ease;
+  box-shadow: ${({ $active }) => $active ? '0 2px 8px rgba(5, 165, 132, 0.15)' : 'none'};
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: ${({ $active }) => $active ? 'scale(1.02)' : 'scale(1)'};
+  position: relative;
+  overflow: hidden;
   
   &:hover {
     color: #0f172a;
+    background: ${({ $active }) => $active ? '#ffffff' : 'rgba(255, 255, 255, 0.5)'};
+    transform: scale(1.02);
+  }
+  
+  &:active {
+    transform: scale(0.98);
+  }
+  
+  /* Active indicator */
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    left: 50%;
+    transform: translateX(-50%) scaleX(${({ $active }) => $active ? '1' : '0'});
+    width: 16px;
+    height: 2px;
+    background: #05A584;
+    border-radius: 1px;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 `;
 

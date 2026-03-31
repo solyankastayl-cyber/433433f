@@ -16,8 +16,8 @@
  * - EXECUTION (100) → pattern geometry (90) → structure (80) → levels → candles
  */
 
-import React, { useEffect, useRef, useMemo, useState } from 'react';
-import styled from 'styled-components';
+import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
+import styled, { keyframes, css } from 'styled-components';
 import { createChart, CandlestickSeries, LineSeries, createSeriesMarkers } from 'lightweight-charts';
 import { MarketMechanicsRenderer } from '../../../components/chart-engine/MarketMechanicsLayer';
 import { renderNarrative } from '../../../components/chart-engine/narrative';
@@ -31,6 +31,31 @@ import PatternSVGOverlay, { PatternLegend } from './PatternSVGOverlay';
 import InsightPanel from './InsightPanel';
 // V4 Pattern Renderer
 import { renderPattern, clearPattern } from '../../../chart/renderers/patternRenderer';
+// Zoom preferences
+import { useChartPreferences } from '../../../hooks/useChartPreferences';
+
+// Timeframe transition animation
+const fadeIn = keyframes`
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+`;
+
+const slideIn = keyframes`
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+`;
 
 const ChartWrapper = styled.div`
   position: relative;
@@ -40,6 +65,11 @@ const ChartWrapper = styled.div`
   border: 1px solid #e2e8f0;
   overflow: hidden;
   font-family: 'Gilroy', 'Inter', -apple-system, sans-serif;
+  
+  /* Timeframe transition animation */
+  ${({ $isTransitioning }) => $isTransitioning && css`
+    animation: ${fadeIn} 0.3s ease-out;
+  `}
 `;
 
 const ChartContainer = styled.div`
@@ -353,6 +383,39 @@ const ResearchChart = ({
   // Track candles identity for smart updates
   const prevCandlesRef = useRef(null);
   const candlesSeriesRef = useRef(null);
+  
+  // Timeframe transition animation state
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const prevTimeframeRef = useRef(timeframe);
+  
+  // Chart zoom preferences (P1: save/load user zoom)
+  const { 
+    getZoomForTimeframe, 
+    saveZoomForTimeframe, 
+    saveVisibleRange 
+  } = useChartPreferences(symbol);
+  
+  // Trigger animation on timeframe change
+  useEffect(() => {
+    if (prevTimeframeRef.current !== timeframe) {
+      setIsTransitioning(true);
+      const timer = setTimeout(() => setIsTransitioning(false), 300);
+      prevTimeframeRef.current = timeframe;
+      
+      // Reset first load flag on timeframe change to apply proper zoom
+      isFirstLoadRef.current = true;
+      userHasZoomedRef.current = false;
+      
+      return () => clearTimeout(timer);
+    }
+  }, [timeframe]);
+  
+  // Save visible range when user scrolls/zooms
+  const handleVisibleRangeChange = useCallback((range) => {
+    if (userHasZoomedRef.current && range?.from && range?.to) {
+      saveVisibleRange(timeframe, range.from, range.to);
+    }
+  }, [timeframe, saveVisibleRange]);
 
   // ═══════════════════════════════════════════════════════════════
   // MODE-BASED LAYER VISIBILITY — Auto/Classic/Smart/Minimal
@@ -1492,52 +1555,55 @@ const ResearchChart = ({
         const barDuration = mapped.length > 1 ? mapped[1].time - mapped[0].time : 86400;
         
         // ═══════════════════════════════════════════════════════════════
-        // ZOOM STRATEGY BASED ON TIMEFRAME PROP (not barDuration!)
-        // User selects timeframe to see the FULL period, not partial view
+        // P1: CHECK FOR SAVED USER ZOOM PREFERENCES FIRST
         // ═══════════════════════════════════════════════════════════════
-        // Timeframe mapping:
-        // - 4H: Recent view, show ~60 candles for detail
-        // - 1D: Short-term, show ~90 candles (~3 months)
-        // - 7D, 30D, 180D, 1Y: Show ALL data (fitContent) for full pattern
-        
         const tf = (timeframe || '4H').toUpperCase();
-        // Note: timeframe values are '30D' not '1M', '180D' not '6M'
-        const longTimeframes = ['7D', '30D', '180D', '1Y'];
-        const isLongTimeframe = longTimeframes.includes(tf);
+        const savedZoom = getZoomForTimeframe(tf);
         
-        console.log('[ResearchChart] Timeframe:', tf, 'isLong:', isLongTimeframe, 'candles:', mapped.length);
-        
-        if (isLongTimeframe) {
-          // LONG TIMEFRAMES: fitContent to show FULL picture
-          // This ensures user sees the complete pattern (like in user's screenshot)
-          console.log('[ResearchChart] Long TF (' + tf + '): fitContent for full pattern view');
-          chart.timeScale().fitContent();
-        } else if (tf === '1D') {
-          // 1D: Show ~90 candles (~3 months) for better context
-          const visibleBars = Math.min(90, mapped.length);
-          const startIdx = Math.max(0, mapped.length - visibleBars);
-          const fromTime = mapped[startIdx].time;
-          const toTime = mapped[mapped.length - 1].time;
-          const paddedTo = toTime + barDuration * 10;
-          
-          console.log('[ResearchChart] 1D: Zooming to last', visibleBars, 'candles');
+        // If user has saved visible range for this timeframe, use it
+        if (savedZoom?.visibleRange?.from && savedZoom?.visibleRange?.to) {
+          console.log('[ResearchChart] Using saved zoom for', tf, savedZoom.visibleRange);
           chart.timeScale().setVisibleRange({
-            from: fromTime,
-            to: paddedTo,
+            from: savedZoom.visibleRange.from,
+            to: savedZoom.visibleRange.to,
           });
         } else {
-          // 4H and shorter: Show ~60 candles for detail view
-          const visibleBars = Math.min(60, mapped.length);
-          const startIdx = Math.max(0, mapped.length - visibleBars);
-          const fromTime = mapped[startIdx].time;
-          const toTime = mapped[mapped.length - 1].time;
-          const paddedTo = toTime + barDuration * 10;
+          // ═══════════════════════════════════════════════════════════════
+          // DEFAULT ZOOM STRATEGY BASED ON TIMEFRAME
+          // ═══════════════════════════════════════════════════════════════
+          const longTimeframes = ['7D', '30D', '180D', '1Y'];
+          const isLongTimeframe = longTimeframes.includes(tf);
           
-          console.log('[ResearchChart] Short TF (' + tf + '): Zooming to last', visibleBars, 'candles');
-          chart.timeScale().setVisibleRange({
-            from: fromTime,
-            to: paddedTo,
-          });
+          console.log('[ResearchChart] Timeframe:', tf, 'isLong:', isLongTimeframe, 'candles:', mapped.length);
+          
+          if (isLongTimeframe || savedZoom?.fitContent) {
+            console.log('[ResearchChart] Long TF (' + tf + '): fitContent for full pattern view');
+            chart.timeScale().fitContent();
+          } else if (tf === '1D') {
+            const visibleBars = savedZoom?.visibleBars || 90;
+            const startIdx = Math.max(0, mapped.length - Math.min(visibleBars, mapped.length));
+            const fromTime = mapped[startIdx].time;
+            const toTime = mapped[mapped.length - 1].time;
+            const paddedTo = toTime + barDuration * 10;
+            
+            console.log('[ResearchChart] 1D: Zooming to last', visibleBars, 'candles');
+            chart.timeScale().setVisibleRange({
+              from: fromTime,
+              to: paddedTo,
+            });
+          } else {
+            const visibleBars = savedZoom?.visibleBars || 60;
+            const startIdx = Math.max(0, mapped.length - Math.min(visibleBars, mapped.length));
+            const fromTime = mapped[startIdx].time;
+            const toTime = mapped[mapped.length - 1].time;
+            const paddedTo = toTime + barDuration * 10;
+            
+            console.log('[ResearchChart] Short TF (' + tf + '): Zooming to last', visibleBars, 'candles');
+            chart.timeScale().setVisibleRange({
+              from: fromTime,
+              to: paddedTo,
+            });
+          }
         }
         
         isFirstLoadRef.current = false;
@@ -1547,12 +1613,11 @@ const ResearchChart = ({
         isFirstLoadRef.current = false;
       }
       
-      // Отслеживаем zoom/scroll пользователя
-      if (!userHasZoomedRef.current) {
-        chart.timeScale().subscribeVisibleTimeRangeChange(() => {
-          userHasZoomedRef.current = true;
-        });
-      }
+      // Track user zoom/scroll and save preferences (P1)
+      chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+        userHasZoomedRef.current = true;
+        handleVisibleRangeChange(range);
+      });
     }
     // CRITICAL: Не вызываем fitContent() при последующих обновлениях данных!
     // Пользователь может растянуть график для детального просмотра
@@ -1648,7 +1713,7 @@ const ResearchChart = ({
   const chartState = candles.length === 0 ? 'no_data' : 'ready';
 
   return (
-    <ChartWrapper>
+    <ChartWrapper $isTransitioning={isTransitioning}>
       <ChartContainer ref={chartRef} $height={height} />
       
       {/* ═══════════════════════════════════════════════════════════════
