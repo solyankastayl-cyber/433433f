@@ -72,7 +72,7 @@
     "typescript": "^5.9.3",
     "vaul": "^1.1.2",
     "zod": "^3.24.4",
-    "zustand": "^5.0.11"
+    "zustand": "^5.0.12"
   },
   "scripts": {
     "start": "NODE_OPTIONS='--max-old-space-size=4096' ./node_modules/.bin/craco start",
