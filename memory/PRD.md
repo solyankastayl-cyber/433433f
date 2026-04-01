@@ -83,29 +83,30 @@
   - IdeaChart height 400px for symmetry with left panel
   - Both panels balanced in height
 
-## Testing Status (iteration_20)
+## Testing Status (iteration_21)
 - ✅ Backend: 100%
 - ✅ Frontend: 100%
-- ✅ **CRITICAL Overlay Coordinate Binding: 100%**
-- ✅ User Interactions: 100%
+- ✅ Chart Overlay: 100%
+- ✅ **Semantic Storytelling: 100%**
 
 ## Prioritized Backlog
 
 ### P0 (Completed)
 - ✅ Chart zoom logic for all timeframes
 - ✅ All 7 tabs functional
-- ✅ Underscore formatting fixes
-- ✅ Ideas mode layout fixes
-- ✅ **IDEAS MODE REFACTOR - Graph-First UI** (March 31, 2026)
-- ✅ **LIGHT THEME + OVERLAY SYNC** (April 1, 2026)
-- ✅ **EVOLUTION-FOCUSED CHART** (April 1, 2026)
-- ✅ **COORDINATE BINDING FIX** (April 1, 2026)
-  - **КРИТИЧНИЙ ФІХ**: Overlay тепер ЖИВЕ в координатах графіка
-  - Коли свічки рухаються (pan/zoom), overlay рухається РАЗОМ з ними
-  - Використано `requestAnimationFrame` для плавних оновлень
-  - Підписка на ВСІ події: timeScale changes, crosshair move, resize
-  - Всі координати через `timeToCoordinate()` / `priceToCoordinate()`
-  - Version boundaries, patterns, expected path, price labels — все синхронізовано
+- ✅ Ideas mode layout fixes (Graph-First UI)
+- ✅ Light Theme
+- ✅ Coordinate Binding Fix
+- ✅ **SEMANTIC STORYTELLING CHART** (April 1, 2026)
+  - **Головна мета**: Користувач розуміє графік за 2 секунди
+  - **V1 Zone**: Сіра зона для періоду минулої ідеї
+  - **V1 Pattern**: Сірий dashed — чітко видно що це "минуле"
+  - **TRANSITION**: Синій badge "rectangle → triangle" — ЦЕНТР UX
+  - **V2 Pattern**: ОДИН КОЛІР (amber) — не red/green confusion!
+  - **Projection**: Окрема фіолетова dashed стрілка (не змішано з патерном)
+  - **Result**: WIN/LOSS маркер
+  - **Mini Legend**: Пояснює що є що
+  - **Семантична мова**: Графік = VISUAL STORY OF DECISIONS
 
 ### P1 (Completed - March 31, 2026)
 - ✅ **WebSocket for real-time chart updates** - `/api/ws/market` endpoint with ConnectionManager
