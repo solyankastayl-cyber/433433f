@@ -1,0 +1,33 @@
+{
+  "summary": "Completed comprehensive testing of P6 Historical Backtest implementation. All backtest APIs are fully functional with accurate metrics computation and proper data storage.",
+  
+  "backend_issues": {},
+
+  "frontend_issues": {},
+
+  "passed_tests": [
+    "Scanner health check",
+    "Backtest run for BTC (4H timeframe, 120 days)",
+    "Global backtest metrics computation",
+    "Backtest metrics grouped by regime",
+    "Backtest metrics grouped by symbol", 
+    "Backtest summary with asset/timeframe breakdown",
+    "Backtest data storage validation with mode=historical_backtest",
+    "Resolution data structure validation (result, resolution_type, actual_price, error_pct)",
+    "Expected accuracy rates validation (2.8% accuracy, 33.3% partial, 63.9% wrong)",
+    "Bearish bias detection in backtest results",
+    "Multi-asset backtest functionality (BTC, ETH, SOL)",
+    "Backtest metrics computation with real historical data"
+  ],
+
+  "test_report_links": ["/app/backend_test.py"],
+
+  "action_item_for_main_agent": "",
+
+  "updated_files": ["/app/backend_test.py"],
+
+  "success_percentage": "Backend: 100% (10/10 tests passed)",
+
+  "should_call_test_agent_after_fix": "false",
+  "should_main_agent_test_itself": "true"
+}

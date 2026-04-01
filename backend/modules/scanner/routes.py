@@ -487,6 +487,217 @@ async def rebuild_stability():
     }
 
 
+# ══════════════════════════════════════════════════════════════
+# P6: HISTORICAL BACKTEST
+# ══════════════════════════════════════════════════════════════
+
+@router.post("/backtest/run/{symbol}")
+async def run_single_backtest(symbol: str, timeframe: str = "4H", days: int = 180):
+    """
+    Run backtest for a single symbol.
+    
+    First loads historical candles, then runs backtest.
+    """
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.scanner.market_data import get_market_data_provider
+    from modules.ta_engine.per_tf_builder import build_ta_from_candles
+    from modules.prediction.prediction_engine_v3 import build_prediction_regime_aware
+    from workers.prediction_backtest_worker import run_backtest_worker
+    
+    # Load historical candles
+    provider = get_market_data_provider()
+    
+    # Calculate limit based on days and timeframe
+    if timeframe == "4H":
+        limit = days * 6  # 6 candles per day
+    elif timeframe == "1D":
+        limit = days
+    else:
+        limit = days * 6
+    
+    candles = provider.get_candles(symbol, timeframe, limit=limit)
+    
+    if not candles or len(candles) < 150:
+        return {
+            "error": f"Not enough candles for {symbol}: got {len(candles) if candles else 0}, need 150+"
+        }
+    
+    # Define builders
+    def ta_builder(candles, sym, tf):
+        return build_ta_from_candles(candles, sym, tf)
+    
+    def prediction_builder(inp):
+        return build_prediction_regime_aware(inp)
+    
+    # Run backtest
+    result = run_backtest_worker(
+        db=db,
+        symbol=symbol,
+        timeframe=timeframe,
+        candles=candles,
+        ta_builder=ta_builder,
+        prediction_builder=prediction_builder
+    )
+    
+    return result
+
+
+@router.post("/backtest/run-multi")
+async def run_multi_backtest(
+    symbols: str = "BTC,ETH,SOL",
+    timeframes: str = "4H,1D",
+    days: int = 180
+):
+    """
+    Run backtest for multiple symbols and timeframes.
+    
+    Args:
+        symbols: Comma-separated list of symbols
+        timeframes: Comma-separated list of timeframes
+        days: Days of history
+    """
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.scanner.market_data import get_market_data_provider
+    from modules.ta_engine.per_tf_builder import build_ta_from_candles
+    from modules.prediction.prediction_engine_v3 import build_prediction_regime_aware
+    from workers.prediction_backtest_worker import run_multi_asset_backtest
+    
+    symbol_list = [s.strip().upper() for s in symbols.split(",")]
+    tf_list = [t.strip().upper() for t in timeframes.split(",")]
+    
+    provider = get_market_data_provider()
+    
+    def candle_loader(symbol, timeframe, days):
+        if timeframe == "4H":
+            limit = days * 6
+        elif timeframe == "1D":
+            limit = days
+        else:
+            limit = days * 6
+        return provider.get_candles(symbol, timeframe, limit=limit)
+    
+    def ta_builder(candles, sym, tf):
+        return build_ta_from_candles(candles, sym, tf)
+    
+    def prediction_builder(inp):
+        return build_prediction_regime_aware(inp)
+    
+    result = run_multi_asset_backtest(
+        db=db,
+        symbols=symbol_list,
+        timeframes=tf_list,
+        candle_loader=candle_loader,
+        ta_builder=ta_builder,
+        prediction_builder=prediction_builder,
+        days=days
+    )
+    
+    return result
+
+
+@router.get("/backtest/metrics")
+async def get_backtest_metrics():
+    """Get global backtest metrics."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.backtest_repository import get_backtest_results
+    from modules.prediction.backtest_metrics import compute_backtest_metrics
+    
+    results = get_backtest_results(db, limit=5000)
+    return compute_backtest_metrics(results)
+
+
+@router.get("/backtest/metrics/by-regime")
+async def get_backtest_metrics_by_regime():
+    """Get backtest metrics grouped by regime."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.backtest_repository import get_backtest_results
+    from modules.prediction.backtest_metrics import group_by_field
+    
+    results = get_backtest_results(db, limit=5000)
+    return group_by_field(results, "regime")
+
+
+@router.get("/backtest/metrics/by-model")
+async def get_backtest_metrics_by_model():
+    """Get backtest metrics grouped by model."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.backtest_repository import get_backtest_results
+    from modules.prediction.backtest_metrics import group_by_field
+    
+    results = get_backtest_results(db, limit=5000)
+    return group_by_field(results, "model")
+
+
+@router.get("/backtest/metrics/by-symbol")
+async def get_backtest_metrics_by_symbol():
+    """Get backtest metrics grouped by symbol."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.backtest_repository import get_backtest_results
+    from modules.prediction.backtest_metrics import group_by_field
+    
+    results = get_backtest_results(db, limit=5000)
+    return group_by_field(results, "symbol")
+
+
+@router.get("/backtest/summary")
+async def get_backtest_summary():
+    """Get summary of stored backtest results."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.backtest_repository import get_backtest_summary
+    
+    return get_backtest_summary(db)
+
+
+@router.delete("/backtest/clear")
+async def clear_backtest_results(symbol: str = None):
+    """Clear backtest results (optionally for specific symbol)."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.backtest_repository import clear_backtest_results as clear_bt
+    
+    cleared = clear_bt(db, symbol)
+    return {"cleared": cleared}
+
+
 def register_routes(app):
     """Register scanner routes with FastAPI app."""
     app.include_router(router)

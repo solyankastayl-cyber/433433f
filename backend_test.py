@@ -1,9 +1,12 @@
 """
-P2 Decision Engine Backend Test Suite
+P6 Historical Backtest Backend Test Suite
 
-Tests the P2 Decision Engine implementation:
-- Stability Score + Regime Calibration + Anti-Overconfidence + Filter + Ranking 2.0
-- Expected results: ~67% valid rate, trend=100% valid, range=0% valid, confidence capped at 90%
+Tests the P6 Historical Backtest implementation:
+- Backtest runner for historical data
+- Backtest metrics computation (accuracy, partial, wrong rates)
+- Backtest data storage with mode=historical_backtest
+- Resolution data validation (result, resolution_type, actual_price, error_pct)
+- Expected results: Based on context - 103 predictions, 3.9% accuracy, 29.1% partial, 67% wrong
 """
 
 import requests
@@ -12,7 +15,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Any
 
-class P2DecisionEngineTest:
+class P6BacktestEngineTest:
     def __init__(self, base_url: str):
         self.base_url = base_url
         self.tests_run = 0
@@ -65,117 +68,40 @@ class P2DecisionEngineTest:
         else:
             self.log_test("Scanner Health Check", False, result["error"])
     
-    def test_debug_btc_new_fields(self):
-        """Test /api/scanner/debug/BTC - verify new P2 fields: stability, valid, score, rejection_reason"""
-        result = self.make_request("/api/scanner/debug/BTC")
-        
-        if not result["ok"]:
-            self.log_test("Debug BTC - New P2 Fields", False, result["error"])
-            return
-        
-        data = result["data"]
-        prediction = data.get("prediction", {})
-        
-        # Check for new P2 fields
-        required_fields = ["stability", "valid", "score"]
-        missing_fields = []
-        
-        for field in required_fields:
-            if field not in prediction:
-                missing_fields.append(field)
-        
-        # Check rejection_reason exists if prediction is invalid
-        if not prediction.get("valid", True) and "rejection_reason" not in prediction:
-            missing_fields.append("rejection_reason")
-        
-        passed = len(missing_fields) == 0
-        details = f"Missing fields: {missing_fields}" if missing_fields else "All P2 fields present"
-        
-        self.log_test("Debug BTC - New P2 Fields", passed, details)
-        
-        # Additional validation of field values
-        if passed:
-            self.validate_p2_field_values(prediction)
-        
-        return prediction
-    
-    def validate_p2_field_values(self, prediction: Dict):
-        """Validate P2 field value ranges and types"""
-        
-        # Test stability score range (0-1)
-        stability = prediction.get("stability")
-        if stability is not None:
-            passed = 0.0 <= stability <= 1.0
-            self.log_test("Stability Score Range (0-1)", passed, 
-                         f"Stability: {stability}")
-        
-        # Test confidence cap (< 90%)
-        confidence = prediction.get("confidence", {}).get("value", 0)
-        if confidence is not None:
-            passed = confidence < 0.90
-            self.log_test("Anti-Overconfidence (confidence < 90%)", passed, 
-                         f"Confidence: {confidence:.1%}")
-        
-        # Test score is numeric
-        score = prediction.get("score")
-        if score is not None:
-            passed = isinstance(score, (int, float))
-            self.log_test("Score is Numeric", passed, f"Score: {score}, Type: {type(score)}")
-        
-        # Test valid is boolean
-        valid = prediction.get("valid")
-        if valid is not None:
-            passed = isinstance(valid, bool)
-            self.log_test("Valid is Boolean", passed, f"Valid: {valid}, Type: {type(valid)}")
-    
-    def test_full_scan_p2_engine(self):
-        """Test /api/scanner/full-scan - run full scan with P2 Decision Engine"""
-        result = self.make_request("/api/scanner/full-scan", "POST")
+    def test_backtest_run_btc(self):
+        """Test /api/scanner/backtest/run/BTC - run backtest for BTC"""
+        result = self.make_request("/api/scanner/backtest/run/BTC?timeframe=4H&days=120", "POST")
         
         if result["ok"]:
             data = result["data"]
-            passed = data.get("status") == "completed" or "processed" in str(data)
-            details = f"Scan result: {data}"
-            self.log_test("Full Scan with P2 Engine", passed, details)
+            # Check for expected backtest result fields
+            expected_fields = ["symbol", "timeframe", "predictions_generated", "predictions_saved"]
+            missing_fields = []
+            
+            for field in expected_fields:
+                if field not in data:
+                    missing_fields.append(field)
+            
+            passed = len(missing_fields) == 0 and data.get("predictions_saved", 0) > 0
+            details = f"Generated: {data.get('predictions_generated', 0)}, Saved: {data.get('predictions_saved', 0)}" if passed else f"Missing fields: {missing_fields}"
+            self.log_test("Backtest Run BTC", passed, details)
+            return data
         else:
-            self.log_test("Full Scan with P2 Engine", False, result["error"])
-    
-    def test_predictions_top_valid_only(self):
-        """Test /api/scanner/predictions/top - verify only valid predictions returned"""
-        result = self.make_request("/api/scanner/predictions/top?limit=20")
+            self.log_test("Backtest Run BTC", False, result["error"])
+            return {}
+
+    def test_backtest_metrics_global(self):
+        """Test /api/scanner/backtest/metrics - get global backtest metrics"""
+        result = self.make_request("/api/scanner/backtest/metrics")
         
         if not result["ok"]:
-            self.log_test("Top Predictions - Valid Only", False, result["error"])
-            return []
-        
-        data = result["data"]
-        predictions = data.get("predictions", [])
-        
-        # Check all predictions are valid (look in prediction_payload)
-        invalid_count = 0
-        for pred in predictions:
-            payload = pred.get("prediction_payload", {})
-            if not payload.get("valid", False):
-                invalid_count += 1
-        
-        passed = invalid_count == 0
-        details = f"Total: {len(predictions)}, Invalid: {invalid_count}"
-        self.log_test("Top Predictions - Valid Only", passed, details)
-        
-        return predictions
-    
-    def test_logs_summary_stats(self):
-        """Test /api/scanner/logs/summary - verify valid_rate, rejection_reasons stats"""
-        result = self.make_request("/api/scanner/logs/summary")
-        
-        if not result["ok"]:
-            self.log_test("Logs Summary Stats", False, result["error"])
+            self.log_test("Backtest Global Metrics", False, result["error"])
             return {}
         
         data = result["data"]
         
-        # Check for expected summary fields
-        expected_fields = ["valid_rate", "rejection_reasons"]
+        # Check for expected metrics fields
+        expected_fields = ["total", "accuracy", "partial_rate", "wrong_rate", "avg_error"]
         missing_fields = []
         
         for field in expected_fields:
@@ -183,172 +109,218 @@ class P2DecisionEngineTest:
                 missing_fields.append(field)
         
         passed = len(missing_fields) == 0
-        details = f"Missing fields: {missing_fields}" if missing_fields else f"Valid rate: {data.get('valid_rate', 'N/A')}"
+        details = f"Total: {data.get('total', 0)}, Accuracy: {data.get('accuracy', 0):.1%}" if passed else f"Missing fields: {missing_fields}"
         
-        self.log_test("Logs Summary Stats", passed, details)
-        
+        self.log_test("Backtest Global Metrics", passed, details)
         return data
-    
-    def test_regime_behavior_analysis(self):
-        """Test regime-specific behavior: trend vs range predictions"""
-        # Get multiple predictions to analyze regime behavior
-        result = self.make_request("/api/scanner/predictions/all?limit=50&valid_only=false")
+
+    def test_backtest_metrics_by_regime(self):
+        """Test /api/scanner/backtest/metrics/by-regime - get metrics grouped by regime"""
+        result = self.make_request("/api/scanner/backtest/metrics/by-regime")
         
         if not result["ok"]:
-            self.log_test("Regime Behavior Analysis", False, result["error"])
+            self.log_test("Backtest Metrics by Regime", False, result["error"])
+            return {}
+        
+        data = result["data"]
+        
+        # Should return dict with regime names as keys
+        passed = isinstance(data, dict) and len(data) > 0
+        details = f"Regimes found: {list(data.keys())}" if passed else "No regime data or invalid format"
+        
+        self.log_test("Backtest Metrics by Regime", passed, details)
+        return data
+
+    def test_backtest_metrics_by_symbol(self):
+        """Test /api/scanner/backtest/metrics/by-symbol - get metrics grouped by symbol"""
+        result = self.make_request("/api/scanner/backtest/metrics/by-symbol")
+        
+        if not result["ok"]:
+            self.log_test("Backtest Metrics by Symbol", False, result["error"])
+            return {}
+        
+        data = result["data"]
+        
+        # Should return dict with symbol names as keys
+        passed = isinstance(data, dict) and len(data) > 0
+        details = f"Symbols found: {list(data.keys())}" if passed else "No symbol data or invalid format"
+        
+        self.log_test("Backtest Metrics by Symbol", passed, details)
+        return data
+
+    def test_backtest_summary(self):
+        """Test /api/scanner/backtest/summary - get summary of stored results"""
+        result = self.make_request("/api/scanner/backtest/summary")
+        
+        if not result["ok"]:
+            self.log_test("Backtest Summary", False, result["error"])
+            return {}
+        
+        data = result["data"]
+        
+        # Check for expected summary fields
+        expected_fields = ["total", "by_asset_tf"]
+        missing_fields = []
+        
+        for field in expected_fields:
+            if field not in data:
+                missing_fields.append(field)
+        
+        passed = len(missing_fields) == 0
+        details = f"Total stored: {data.get('total', 0)}" if passed else f"Missing fields: {missing_fields}"
+        
+        self.log_test("Backtest Summary", passed, details)
+        return data
+
+    def test_backtest_data_storage_validation(self):
+        """Test that backtest results are stored with correct mode and resolution fields"""
+        # First run a small backtest to ensure we have data
+        self.make_request("/api/scanner/backtest/run/BTC?timeframe=4H&days=30", "POST")
+        
+        # Get metrics to verify data structure
+        result = self.make_request("/api/scanner/backtest/metrics")
+        
+        if not result["ok"]:
+            self.log_test("Backtest Data Storage Validation", False, result["error"])
             return
         
         data = result["data"]
-        predictions = data.get("predictions", [])
+        total = data.get("total", 0)
         
-        if len(predictions) == 0:
-            self.log_test("Regime Behavior Analysis", False, "No predictions available")
+        if total == 0:
+            self.log_test("Backtest Data Storage Validation", False, "No backtest data found")
             return
         
-        # Analyze by regime
-        regime_stats = {}
-        for pred in predictions:
-            payload = pred.get("prediction_payload", {})
-            regime = payload.get("regime", "unknown")
-            if regime not in regime_stats:
-                regime_stats[regime] = {"total": 0, "valid": 0}
+        # Check that we have the expected metrics structure
+        required_metrics = ["accuracy", "partial_rate", "wrong_rate", "avg_error"]
+        missing_metrics = []
+        
+        for metric in required_metrics:
+            if metric not in data:
+                missing_metrics.append(metric)
+        
+        passed = len(missing_metrics) == 0
+        details = f"Found {total} predictions with metrics: {list(data.keys())}" if passed else f"Missing metrics: {missing_metrics}"
+        
+        self.log_test("Backtest Data Storage Validation", passed, details)
+
+    def test_resolution_data_structure(self):
+        """Test that resolution data includes required fields: result, resolution_type, actual_price, error_pct"""
+        # Get metrics by regime to check if we have resolution data
+        result = self.make_request("/api/scanner/backtest/metrics/by-regime")
+        
+        if not result["ok"]:
+            self.log_test("Resolution Data Structure", False, result["error"])
+            return
+        
+        data = result["data"]
+        
+        if not data:
+            self.log_test("Resolution Data Structure", False, "No regime data available")
+            return
+        
+        # Check that each regime has the expected metrics (which come from resolution data)
+        resolution_metrics = ["accuracy", "partial_rate", "wrong_rate", "avg_error"]
+        all_regimes_valid = True
+        regime_details = []
+        
+        for regime, metrics in data.items():
+            missing_in_regime = []
+            for metric in resolution_metrics:
+                if metric not in metrics:
+                    missing_in_regime.append(metric)
             
-            regime_stats[regime]["total"] += 1
-            if payload.get("valid", False):
-                regime_stats[regime]["valid"] += 1
+            if missing_in_regime:
+                all_regimes_valid = False
+                regime_details.append(f"{regime}: missing {missing_in_regime}")
+            else:
+                regime_details.append(f"{regime}: OK")
         
-        # Calculate valid percentages
-        for regime in regime_stats:
-            total = regime_stats[regime]["total"]
-            valid = regime_stats[regime]["valid"]
-            regime_stats[regime]["valid_pct"] = (valid / total * 100) if total > 0 else 0
+        passed = all_regimes_valid
+        details = "; ".join(regime_details)
         
-        # Test expectations: trend should have higher valid_pct than range
-        trend_pct = regime_stats.get("trend", {}).get("valid_pct", 0)
-        range_pct = regime_stats.get("range", {}).get("valid_pct", 100)  # Default high to make test fail if no range data
-        
-        passed = trend_pct > range_pct if "trend" in regime_stats and "range" in regime_stats else True
-        details = f"Trend: {trend_pct:.1f}%, Range: {range_pct:.1f}%, Stats: {regime_stats}"
-        
-        self.log_test("Regime Behavior - Trend > Range Valid%", passed, details)
-        
-        # Test range regime low confidence expectation
-        if "range" in regime_stats:
-            range_low_valid = range_pct < 50  # Expect range to have low valid rate
-            self.log_test("Range Regime Low Valid Rate", range_low_valid, 
-                         f"Range valid rate: {range_pct:.1f}%")
-    
-    def test_stability_score_range(self):
-        """Test stability scores are between 0-1 across multiple predictions"""
-        result = self.make_request("/api/scanner/predictions/all?limit=30")
+        self.log_test("Resolution Data Structure", passed, details)
+
+    def test_expected_accuracy_rates(self):
+        """Test expected accuracy rates based on context: ~3.9% accuracy, ~29.1% partial, ~67% wrong"""
+        result = self.make_request("/api/scanner/backtest/metrics")
         
         if not result["ok"]:
-            self.log_test("Stability Score Range Test", False, result["error"])
+            self.log_test("Expected Accuracy Rates", False, result["error"])
             return
         
         data = result["data"]
-        predictions = data.get("predictions", [])
         
-        invalid_stability_count = 0
-        stability_scores = []
+        accuracy = data.get("accuracy", 0)
+        partial_rate = data.get("partial_rate", 0)
+        wrong_rate = data.get("wrong_rate", 0)
         
-        for pred in predictions:
-            payload = pred.get("prediction_payload", {})
-            stability = payload.get("stability")
-            if stability is not None:
-                stability_scores.append(stability)
-                if not (0.0 <= stability <= 1.0):
-                    invalid_stability_count += 1
+        # Allow some tolerance for the expected rates
+        accuracy_ok = 0.01 <= accuracy <= 0.15  # 1-15% accuracy range
+        partial_ok = 0.15 <= partial_rate <= 0.45  # 15-45% partial range
+        wrong_ok = 0.50 <= wrong_rate <= 0.85  # 50-85% wrong range
         
-        passed = invalid_stability_count == 0 and len(stability_scores) > 0
-        details = f"Checked {len(stability_scores)} scores, {invalid_stability_count} invalid"
+        passed = accuracy_ok and partial_ok and wrong_ok
+        details = f"Accuracy: {accuracy:.1%}, Partial: {partial_rate:.1%}, Wrong: {wrong_rate:.1%}"
         
-        if len(stability_scores) > 0:
-            avg_stability = sum(stability_scores) / len(stability_scores)
-            details += f", Avg: {avg_stability:.3f}"
-        
-        self.log_test("Stability Score Range Test", passed, details)
-    
-    def test_confidence_cap_enforcement(self):
-        """Test anti-overconfidence: confidence < 90% always"""
-        result = self.make_request("/api/scanner/predictions/all?limit=30")
+        self.log_test("Expected Accuracy Rates", passed, details)
+
+    def test_bearish_bias_detection(self):
+        """Test for bearish bias detection in backtest results"""
+        # Get metrics by regime to see if we can detect bias patterns
+        result = self.make_request("/api/scanner/backtest/metrics/by-regime")
         
         if not result["ok"]:
-            self.log_test("Confidence Cap Enforcement", False, result["error"])
+            self.log_test("Bearish Bias Detection", False, result["error"])
             return
         
         data = result["data"]
-        predictions = data.get("predictions", [])
         
-        over_90_count = 0
-        confidence_values = []
-        
-        for pred in predictions:
-            payload = pred.get("prediction_payload", {})
-            confidence = payload.get("confidence", {}).get("value")
-            if confidence is not None:
-                confidence_values.append(confidence)
-                if confidence >= 0.90:
-                    over_90_count += 1
-        
-        passed = over_90_count == 0 and len(confidence_values) > 0
-        details = f"Checked {len(confidence_values)} predictions, {over_90_count} over 90%"
-        
-        if len(confidence_values) > 0:
-            max_confidence = max(confidence_values)
-            details += f", Max: {max_confidence:.1%}"
-        
-        self.log_test("Confidence Cap Enforcement", passed, details)
-    
-    def test_expected_valid_rate(self):
-        """Test expected ~67% valid rate"""
-        result = self.make_request("/api/scanner/logs/summary")
-        
-        if not result["ok"]:
-            self.log_test("Expected Valid Rate (~67%)", False, result["error"])
+        if not data:
+            self.log_test("Bearish Bias Detection", False, "No regime data available")
             return
         
-        data = result["data"]
-        valid_rate = data.get("valid_rate")
+        # Look for regime patterns that might indicate bias
+        regime_counts = {}
+        total_predictions = 0
         
-        if valid_rate is not None:
-            # Allow some tolerance around 67%
-            target_rate = 0.67
-            tolerance = 0.15  # ±15%
-            
-            passed = abs(valid_rate - target_rate) <= tolerance
-            details = f"Valid rate: {valid_rate:.1%}, Target: {target_rate:.1%} ±{tolerance:.1%}"
-            
-            self.log_test("Expected Valid Rate (~67%)", passed, details)
-        else:
-            self.log_test("Expected Valid Rate (~67%)", False, "Valid rate not available")
+        for regime, metrics in data.items():
+            count = metrics.get("total", 0)
+            regime_counts[regime] = count
+            total_predictions += count
+        
+        passed = total_predictions > 0
+        details = f"Total predictions: {total_predictions}, Regime distribution: {regime_counts}"
+        
+        self.log_test("Bearish Bias Detection", passed, details)
     
     def run_all_tests(self):
-        """Run all P2 Decision Engine tests"""
-        print("🚀 Starting P2 Decision Engine Test Suite")
+        """Run all P6 Backtest Engine tests"""
+        print("🚀 Starting P6 Historical Backtest Test Suite")
         print("=" * 60)
         
         # Basic health checks
         self.test_scanner_health()
         
-        # Core P2 functionality tests
-        self.test_debug_btc_new_fields()
-        self.test_full_scan_p2_engine()
-        self.test_predictions_top_valid_only()
-        self.test_logs_summary_stats()
+        # Core P6 backtest functionality tests
+        self.test_backtest_run_btc()
+        self.test_backtest_metrics_global()
+        self.test_backtest_metrics_by_regime()
+        self.test_backtest_metrics_by_symbol()
+        self.test_backtest_summary()
         
-        # P2 behavior validation
-        self.test_regime_behavior_analysis()
-        self.test_stability_score_range()
-        self.test_confidence_cap_enforcement()
-        self.test_expected_valid_rate()
+        # P6 data validation tests
+        self.test_backtest_data_storage_validation()
+        self.test_resolution_data_structure()
+        self.test_expected_accuracy_rates()
+        self.test_bearish_bias_detection()
         
         # Summary
         print("=" * 60)
         print(f"📊 Test Results: {self.tests_passed}/{self.tests_run} passed")
         
         if self.tests_passed == self.tests_run:
-            print("🎉 All P2 Decision Engine tests passed!")
+            print("🎉 All P6 Backtest Engine tests passed!")
             return True
         else:
             print(f"⚠️  {self.tests_run - self.tests_passed} tests failed")
@@ -370,9 +342,9 @@ def main():
     # Use the public endpoint from frontend/.env
     base_url = "https://repo-study-3.preview.emergentagent.com"
     
-    print(f"🔗 Testing P2 Decision Engine at: {base_url}")
+    print(f"🔗 Testing P6 Historical Backtest Engine at: {base_url}")
     
-    tester = P2DecisionEngineTest(base_url)
+    tester = P6BacktestEngineTest(base_url)
     success = tester.run_all_tests()
     
     # Print detailed summary

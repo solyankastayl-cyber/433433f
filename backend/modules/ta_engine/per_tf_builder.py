@@ -2365,3 +2365,25 @@ def get_per_timeframe_builder() -> PerTimeframeBuilder:
     if _per_tf_builder is None:
         _per_tf_builder = PerTimeframeBuilder()
     return _per_tf_builder
+
+
+def build_ta_from_candles(
+    candles: List[Dict[str, Any]],
+    symbol: str,
+    timeframe: str
+) -> Dict[str, Any]:
+    """
+    Build TA from candles (for backtest use).
+    
+    This is a convenience wrapper around PerTimeframeBuilder.build().
+    
+    Args:
+        candles: OHLCV candle data
+        symbol: Trading pair
+        timeframe: Timeframe string
+    
+    Returns:
+        TA payload dict
+    """
+    builder = get_per_timeframe_builder()
+    return builder.build(candles, symbol, timeframe)
