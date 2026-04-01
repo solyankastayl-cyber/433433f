@@ -385,6 +385,13 @@ def build_real_prediction(ta_payload: Dict[str, Any]) -> Dict[str, Any]:
         result["_ta_pattern"] = ta_payload.get("pattern", {}).get("type", "none")
         result["_ta_regime"] = ta_payload.get("_ta_layers_regime", "unknown")
         
+        # 4. LOG for monitoring (P1 requirement)
+        try:
+            from modules.scanner.scan_logger import log_scan_result
+            log_scan_result(symbol, timeframe, ta_payload, result)
+        except Exception as log_err:
+            print(f"[Prediction Adapter] Log error: {log_err}")
+        
         return result
     
     except Exception as e:

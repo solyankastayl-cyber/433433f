@@ -265,6 +265,35 @@ async def trigger_full_scan(
     return result
 
 
+# ══════════════════════════════════════════════════════════════
+# LOGGING & MONITORING
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/logs/recent")
+async def get_recent_logs(limit: int = 50):
+    """Get recent scan logs for monitoring."""
+    from .scan_logger import get_recent_logs
+    logs = get_recent_logs(limit=limit)
+    return {
+        "count": len(logs),
+        "logs": logs,
+    }
+
+
+@router.get("/logs/summary")
+async def get_logs_summary():
+    """Get summary statistics from scan logs."""
+    from .scan_logger import get_logs_summary
+    return get_logs_summary()
+
+
+@router.post("/logs/clear")
+async def clear_logs():
+    """Clear all scan logs."""
+    from .scan_logger import clear_logs
+    return clear_logs()
+
+
 def register_routes(app):
     """Register scanner routes with FastAPI app."""
     app.include_router(router)
