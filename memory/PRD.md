@@ -1,192 +1,103 @@
-# TA Engine — Full Decision Engine with Truth Layer
+# TA Engine — Full System with Historical Backtest
 
-## Original Problem Statement
-Побудувати повний Trading Decision Engine з якісними predictions, outcome tracking, self-calibration та anti-drift protection.
+## System Summary
 
-## Architecture
+Complete Trading Decision Engine with:
+- **P0**: Scanner Engine (asset registry, job queue, workers)
+- **P1**: Regime Engine (4 specialized models)
+- **P2**: Decision Engine (stability, filter, ranking)
+- **P3**: Outcome Tracking (resolution rules)
+- **P4**: Real Calibration (dynamic weights)
+- **P5**: Anti-Drift (model health, calibration guard)
+- **P6**: Historical Backtest (fast learning from history)
 
-### Pipeline V4 (Decision Engine + Truth Layer)
+## P6 Historical Backtest
+
+### Architecture
 ```
-Asset Registry (top 50/100/300)
+Historical Candles (180 days)
     ↓
-Scan Planner → creates jobs
+Backtest Runner (step through history)
+    ├─ visible_candles = candles[:i] (NO LEAKAGE)
+    ├─ ta = build_ta_from_candles(visible)
+    ├─ pred = build_prediction(ta)
+    └─ future_candles = candles[i+1:i+horizon]
     ↓
-Job Queue (MongoDB-based)
+Resolution (future only)
+    ├─ target_hit → correct
+    ├─ wrong_early (>3% against) → wrong
+    └─ horizon_expired → partial/wrong
     ↓
-Workers
-    ├─ TA Worker → ta_snapshots
-    └─ Prediction Worker
-          ↓
-          ├─ detect_regime(ta) → trend/range/compression/high_vol
-          ├─ route_prediction(inp, regime) → specialized model
-          ├─ apply_calibration() [P4]
-          ├─ apply_stability() [P5]
-          ├─ finalize_prediction() [P2]
-          │     ├─ compute_stability_score()
-          │     ├─ apply_regime_weight()
-          │     ├─ apply_anti_overconfidence()
-          │     ├─ is_prediction_valid() → filter
-          │     └─ compute_score() → ranking 2.0
-          └─ save with regime, model, status=pending
+Metrics by regime/model/symbol
     ↓
-Outcome Resolution Worker [P3]
-    ├─ try_early_resolution() → target_hit/wrong_early
-    └─ resolve_at_horizon() → correct/partial/wrong
-    ↓
-Calibration Worker [P4]
-    ├─ compute regime/model stats from resolved
-    └─ adjust weights, target_multipliers, confidence_bias
-    ↓
-Stability Worker [P5]
-    ├─ detect_regime_instability()
-    ├─ detect_model_health()
-    └─ calibration_guard()
-    ↓
-Metrics API
-    ├─ accuracy by regime/model
-    ├─ confidence calibration
-    └─ model health status
+Calibration input
 ```
 
-## Implemented Layers
-
-### P0: Scanner Engine ✅
-- Asset registry, job queue, TA/prediction workers
-- BinanceProvider with cache
-
-### P1: Regime Engine ✅
-- 4 models: trend, range, compression, high_vol
-- Hysteresis in regime detection
-- Pattern/momentum bias fixes
-
-### P2: Decision Engine ✅
-- Stability score
-- Regime calibration weights
-- Anti-overconfidence
-- Filter (MIN_CONFIDENCE=55%, MIN_RETURN=2%, MIN_STABILITY=0.5)
-- Ranking 2.0
-
-### P3: Outcome Tracking ✅
-- Prediction lifecycle: pending → resolved/expired
-- Resolution types: target_hit, correct_early, wrong_early, horizon_expired
-- Results: correct, partial, wrong
-- Error tracking
-
-### P4: Real Calibration ✅
-- Stats by regime/model from resolved outcomes
-- Dynamic weights: regime_weights, model_weights
-- Target multipliers (reduce if too aggressive)
-- Confidence bias (align with actual accuracy)
-
-### P5: Anti-Drift + Stability ✅
-- Regime instability detection
-- Model health tracking (healthy/weak/degrading)
-- Model penalties for degrading performance
-- Calibration guard (freeze if accuracy drops)
-
-## API Endpoints
-
-### P3: Outcomes & Metrics
+### API Endpoints
 ```
-POST /api/scanner/outcomes/resolve    # Run outcome resolution
-GET  /api/scanner/metrics             # Global metrics
-GET  /api/scanner/metrics/by-regime   # Accuracy by regime
-GET  /api/scanner/metrics/by-model    # Accuracy by model
-POST /api/scanner/metrics/compute     # Compute new snapshot
+POST /api/scanner/backtest/run/{symbol}     # Single asset backtest
+POST /api/scanner/backtest/run-multi        # Multi-asset backtest
+GET  /api/scanner/backtest/metrics          # Global metrics
+GET  /api/scanner/backtest/metrics/by-regime
+GET  /api/scanner/backtest/metrics/by-model
+GET  /api/scanner/backtest/metrics/by-symbol
+GET  /api/scanner/backtest/summary
+DELETE /api/scanner/backtest/clear
 ```
 
-### P4: Calibration
-```
-GET  /api/scanner/calibration/status  # Current calibration
-POST /api/scanner/calibration/recalibrate # Run recalibration
-```
+### First Backtest Results (BTC+ETH+SOL 4H, 180 days)
 
-### P5: Stability
-```
-GET  /api/scanner/stability/status    # Full stability status
-GET  /api/scanner/stability/models    # Model health
-POST /api/scanner/stability/rebuild   # Rebuild stability
-```
+| Metric | Value |
+|--------|-------|
+| Total Predictions | 103 |
+| Accuracy | 3.9% |
+| Partial | 29.1% |
+| Wrong | 67.0% |
+| Wrong Early | 52.4% |
 
-## Resolution Rules
+### Key Findings
 
-```python
-# Correct: target hit
-if actual_price >= target_price (bullish):
-    result = "correct"
+1. **Bearish Bias Detected**
+   - 80 bearish vs 23 bullish predictions
+   - Wrong early rate 52.4% (price went opposite direction)
 
-# Partial: direction right, close to target (<5% error)
-if direction_ok and error_pct < 0.05:
-    result = "partial"
+2. **Compression Model Issues**
+   - All predictions were compression regime
+   - Target too aggressive (12-15% moves)
+   - Direction often wrong (bearish in bullish market)
 
-# Wrong early: strong move against prediction (>3%)
-if actual_price < start_price * 0.97 (bullish):
-    result = "wrong", resolution_type = "wrong_early"
-
-# Wrong at horizon: didn't hit target, direction wrong
-else:
-    result = "wrong", resolution_type = "horizon_expired"
-```
-
-## Calibration Rules
-
-```python
-# Accuracy impact on weight
-if accuracy >= 0.62: weight += 0.08
-if accuracy <= 0.45: weight -= 0.08
-
-# Error impact on target multiplier
-if error >= 0.10: multiplier = 0.85
-if error >= 0.06: multiplier = 0.92
-
-# Confidence bias (align with accuracy)
-bias = (accuracy - confidence) * 0.25
-```
-
-## Stability Rules
-
-```python
-# Model degradation (last 20 vs full history)
-if last_acc < full_acc - 0.10:
-    status = "degrading", penalty = 0.88
-
-# Regime instability (frequent direction changes)
-if instability > 0.20:
-    conf *= 0.88
-
-# Calibration guard (accuracy drop)
-if current_acc < last_acc - 0.05:
-    freeze = True, conf *= 0.92
-```
-
-## Testing Results (April 2026)
-
-### P3/P4/P5 Tests: 86.7% pass rate
-- ✅ Prediction structure with all fields
-- ✅ Outcome resolution workflow
-- ✅ Metrics computation
-- ✅ Calibration engine
-- ✅ Stability engine with model health
-
-## MongoDB Collections
-
-| Collection | Purpose |
-|------------|---------|
-| `prediction_snapshots` | Predictions with status, resolution |
-| `ta_snapshots` | TA analysis data |
-| `prediction_metrics_snapshots` | Metrics over time |
-| `prediction_calibration` | Current calibration weights |
-| `prediction_stability` | Model health, regime instability |
-| `prediction_resolution_events` | Debug logs |
+3. **Needed Calibration**
+   - Reduce compression target multiplier
+   - Fix bearish bias in pattern detection
+   - Consider market trend context
 
 ## Next Steps
 
-### P6: Historical Backtest
-- [ ] Replay system on historical data
-- [ ] Fast validation without waiting
-- [ ] Large sample testing
+### Immediate (Based on Backtest)
+- [ ] Fix bearish bias in compression model
+- [ ] Reduce target multipliers (0.85x for compression)
+- [ ] Add market context awareness
+
+### P7: Calibration from Backtest
+- [ ] Use backtest metrics for initial calibration
+- [ ] Apply calibration weights to live predictions
+- [ ] Compare backtest vs live accuracy
 
 ### Production
+- [ ] Cron jobs for workers
 - [ ] Scale to 50+ assets
-- [ ] Cron job for workers
 - [ ] Dashboard for monitoring
+
+## File Structure
+
+```
+/app/backend/modules/prediction/
+├── backtest_runner.py       # Core backtest engine
+├── backtest_resolution.py   # Future-only resolution
+├── backtest_repository.py   # Storage
+├── backtest_metrics.py      # Metrics computation
+├── regime_detector.py       # Regime detection
+├── models/                  # Specialized models
+├── calibration_*.py         # P4 calibration
+└── stability_*.py           # P5 anti-drift
+```
