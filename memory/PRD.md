@@ -1,11 +1,11 @@
-# TA Engine — Decision Engine
+# TA Engine — Full Decision Engine with Truth Layer
 
 ## Original Problem Statement
-Реалізувати повний Trading Decision Engine з якісними predictions та фільтрацією слабких сигналів.
+Побудувати повний Trading Decision Engine з якісними predictions, outcome tracking, self-calibration та anti-drift protection.
 
 ## Architecture
 
-### Pipeline V3 (Decision Engine)
+### Pipeline V4 (Decision Engine + Truth Layer)
 ```
 Asset Registry (top 50/100/300)
     ↓
@@ -19,104 +19,174 @@ Workers
           ↓
           ├─ detect_regime(ta) → trend/range/compression/high_vol
           ├─ route_prediction(inp, regime) → specialized model
-          ├─ finalize_prediction()
+          ├─ apply_calibration() [P4]
+          ├─ apply_stability() [P5]
+          ├─ finalize_prediction() [P2]
           │     ├─ compute_stability_score()
           │     ├─ apply_regime_weight()
           │     ├─ apply_anti_overconfidence()
           │     ├─ is_prediction_valid() → filter
           │     └─ compute_score() → ranking 2.0
-          └─ save with stability, valid, score
+          └─ save with regime, model, status=pending
     ↓
-Decision Engine Output
-    ├─ Valid predictions (publishable)
-    └─ Invalid predictions (filtered out)
+Outcome Resolution Worker [P3]
+    ├─ try_early_resolution() → target_hit/wrong_early
+    └─ resolve_at_horizon() → correct/partial/wrong
+    ↓
+Calibration Worker [P4]
+    ├─ compute regime/model stats from resolved
+    └─ adjust weights, target_multipliers, confidence_bias
+    ↓
+Stability Worker [P5]
+    ├─ detect_regime_instability()
+    ├─ detect_model_health()
+    └─ calibration_guard()
+    ↓
+Metrics API
+    ├─ accuracy by regime/model
+    ├─ confidence calibration
+    └─ model health status
 ```
 
-## Implemented Modules
+## Implemented Layers
 
-### Scanner Engine (`/app/backend/modules/scanner/`)
-- `ta_to_prediction_adapter.py` - Full pipeline with P2 finalizer
-- `scan_logger.py` - Logging with P2 metrics
-- `market_data/binance_provider.py` - Cache with 5 min TTL
+### P0: Scanner Engine ✅
+- Asset registry, job queue, TA/prediction workers
+- BinanceProvider with cache
 
-### Regime Engine (`/app/backend/modules/prediction/`)
-- `regime_detector.py` - Regime detection with hysteresis
-- `regime_router.py` - Routes to specialized models
-- `models/trend_model.py` - Trend continuation (3-12%)
-- `models/range_model.py` - Mean reversion to bounds
-- `models/compression_model.py` - Breakout anticipation (4-15%)
-- `models/high_vol_model.py` - Momentum-driven (5-20%)
+### P1: Regime Engine ✅
+- 4 models: trend, range, compression, high_vol
+- Hysteresis in regime detection
+- Pattern/momentum bias fixes
 
-### P2 Decision Engine (`/app/backend/modules/prediction/`)
-- `stability.py` - Stability score (pattern_conf + trend_str - vol)
-- `regime_calibration.py` - Regime weights (trend=1.1, range=0.9)
-- `anti_overconfidence.py` - Confidence clamps
-- `filter.py` - Valid/invalid thresholds
-- `ranking_v2.py` - Score = conf*0.4 + return*2.0 + stability*0.6
-- `finalizer.py` - Full P2 pipeline
+### P2: Decision Engine ✅
+- Stability score
+- Regime calibration weights
+- Anti-overconfidence
+- Filter (MIN_CONFIDENCE=55%, MIN_RETURN=2%, MIN_STABILITY=0.5)
+- Ranking 2.0
 
-## P2 Filter Thresholds
+### P3: Outcome Tracking ✅
+- Prediction lifecycle: pending → resolved/expired
+- Resolution types: target_hit, correct_early, wrong_early, horizon_expired
+- Results: correct, partial, wrong
+- Error tracking
 
-```python
-MIN_CONFIDENCE = 0.55   # 55%
-MIN_RETURN = 0.02       # 2%
-MIN_STABILITY = 0.5     # 0.5
+### P4: Real Calibration ✅
+- Stats by regime/model from resolved outcomes
+- Dynamic weights: regime_weights, model_weights
+- Target multipliers (reduce if too aggressive)
+- Confidence bias (align with actual accuracy)
+
+### P5: Anti-Drift + Stability ✅
+- Regime instability detection
+- Model health tracking (healthy/weak/degrading)
+- Model penalties for degrading performance
+- Calibration guard (freeze if accuracy drops)
+
+## API Endpoints
+
+### P3: Outcomes & Metrics
+```
+POST /api/scanner/outcomes/resolve    # Run outcome resolution
+GET  /api/scanner/metrics             # Global metrics
+GET  /api/scanner/metrics/by-regime   # Accuracy by regime
+GET  /api/scanner/metrics/by-model    # Accuracy by model
+POST /api/scanner/metrics/compute     # Compute new snapshot
 ```
 
-## Regime Weights
+### P4: Calibration
+```
+GET  /api/scanner/calibration/status  # Current calibration
+POST /api/scanner/calibration/recalibrate # Run recalibration
+```
+
+### P5: Stability
+```
+GET  /api/scanner/stability/status    # Full stability status
+GET  /api/scanner/stability/models    # Model health
+POST /api/scanner/stability/rebuild   # Rebuild stability
+```
+
+## Resolution Rules
 
 ```python
-REGIME_WEIGHTS = {
-    "trend": 1.10,         # Boost trends
-    "compression": 1.05,   # Breakouts valuable
-    "range": 0.90,         # Range harder
-    "high_volatility": 0.85  # Unpredictable
-}
+# Correct: target hit
+if actual_price >= target_price (bullish):
+    result = "correct"
+
+# Partial: direction right, close to target (<5% error)
+if direction_ok and error_pct < 0.05:
+    result = "partial"
+
+# Wrong early: strong move against prediction (>3%)
+if actual_price < start_price * 0.97 (bullish):
+    result = "wrong", resolution_type = "wrong_early"
+
+# Wrong at horizon: didn't hit target, direction wrong
+else:
+    result = "wrong", resolution_type = "horizon_expired"
+```
+
+## Calibration Rules
+
+```python
+# Accuracy impact on weight
+if accuracy >= 0.62: weight += 0.08
+if accuracy <= 0.45: weight -= 0.08
+
+# Error impact on target multiplier
+if error >= 0.10: multiplier = 0.85
+if error >= 0.06: multiplier = 0.92
+
+# Confidence bias (align with accuracy)
+bias = (accuracy - confidence) * 0.25
+```
+
+## Stability Rules
+
+```python
+# Model degradation (last 20 vs full history)
+if last_acc < full_acc - 0.10:
+    status = "degrading", penalty = 0.88
+
+# Regime instability (frequent direction changes)
+if instability > 0.20:
+    conf *= 0.88
+
+# Calibration guard (accuracy drop)
+if current_acc < last_acc - 0.05:
+    freeze = True, conf *= 0.92
 ```
 
 ## Testing Results (April 2026)
 
-### P2 Decision Engine Complete ✅
+### P3/P4/P5 Tests: 86.7% pass rate
+- ✅ Prediction structure with all fields
+- ✅ Outcome resolution workflow
+- ✅ Metrics computation
+- ✅ Calibration engine
+- ✅ Stability engine with model health
 
-| Metric | Result |
-|--------|--------|
-| Valid Rate | **63-67%** (filtered 33-37% weak signals) |
-| Avg Confidence | 69% (capped at 90%) |
-| Avg Stability | 0.62 |
+## MongoDB Collections
 
-### Metrics by Regime
-
-| Regime | Avg Conf | Avg Stab | Valid % |
-|--------|----------|----------|---------|
-| Trend | 78.6% | 0.62 | **100%** |
-| Range | 50.6% | 0.63 | **0%** |
-| Compression | 75% | 0.60 | **100%** |
-
-**Key Achievement**: Range predictions correctly filtered (0% valid) because they have low confidence and small returns.
-
-## API Endpoints
-
-### Predictions (P2)
-```
-GET /api/scanner/predictions/top    # Only valid predictions
-GET /api/scanner/predictions/all    # All predictions (for analysis)
-GET /api/scanner/debug/{symbol}     # Debug with stability, valid, score
-```
-
-### Logging (P2)
-```
-GET /api/scanner/logs/summary   # valid_rate, rejection_reasons, metrics_by_regime
-GET /api/scanner/logs/recent    # Logs with stability, valid, score
-```
+| Collection | Purpose |
+|------------|---------|
+| `prediction_snapshots` | Predictions with status, resolution |
+| `ta_snapshots` | TA analysis data |
+| `prediction_metrics_snapshots` | Metrics over time |
+| `prediction_calibration` | Current calibration weights |
+| `prediction_stability` | Model health, regime instability |
+| `prediction_resolution_events` | Debug logs |
 
 ## Next Steps
 
-### P3: Real Calibration (Outcomes)
-- [ ] Add outcome tracking (actual vs predicted)
-- [ ] Compute accuracy by regime
-- [ ] Adjust weights based on real performance
+### P6: Historical Backtest
+- [ ] Replay system on historical data
+- [ ] Fast validation without waiting
+- [ ] Large sample testing
 
-### P4: Scale
+### Production
 - [ ] Scale to 50+ assets
-- [ ] Production cron job
+- [ ] Cron job for workers
 - [ ] Dashboard for monitoring
