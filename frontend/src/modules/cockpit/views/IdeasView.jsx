@@ -594,7 +594,7 @@ const MOCK_IDEAS = [
     versions: [
       {
         v: 1,
-        timestamp: Date.now() / 1000 - 86400 * 7,
+        timestamp: Date.now() / 1000 - 86400 * 12,
         snapshot: {
           pattern: 'rectangle',
           lifecycle: 'forming',
@@ -602,17 +602,17 @@ const MOCK_IDEAS = [
           bias: 'bullish',
           probability: { up: 0.62, down: 0.28 },
           levels: { 
-            top: 72171, 
-            bottom: 64821,
-            start_time: Date.now() / 1000 - 86400 * 9,
-            end_time: Date.now() / 1000 - 86400 * 5,
+            top: 70500, 
+            bottom: 67500,
+            start_time: Date.now() / 1000 - 86400 * 14,
+            end_time: Date.now() / 1000 - 86400 * 8,
           },
           interpretation: 'Market consolidating in tight range',
         }
       },
       {
         v: 2,
-        timestamp: Date.now() / 1000 - 86400 * 2,
+        timestamp: Date.now() / 1000 - 86400 * 4,
         snapshot: {
           pattern: 'triangle',
           lifecycle: 'compression',
@@ -620,9 +620,9 @@ const MOCK_IDEAS = [
           bias: 'bullish',
           probability: { up: 0.78, down: 0.18 },
           levels: { 
-            top: 73500, 
-            bottom: 68200,
-            start_time: Date.now() / 1000 - 86400 * 5,
+            top: 71500, 
+            bottom: 68500,
+            start_time: Date.now() / 1000 - 86400 * 7,
             end_time: Date.now() / 1000 - 86400 * 1,
           },
           interpretation: 'Market was consolidating → breakout confirmed',

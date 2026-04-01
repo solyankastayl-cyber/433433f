@@ -1,16 +1,17 @@
 /**
- * IdeaChart — Lightweight chart for Ideas tab (Graph Sync)
- * =========================================================
+ * IdeaChart — EVOLUTION-FOCUSED Chart
+ * ====================================
  * 
- * Shows candle background + IdeaChartOverlay on top.
- * Overlay is SYNCED with chart — moves together with pan/zoom.
- * 
- * LIGHT THEME VERSION
+ * Features:
+ * 1. Past candles FADED (before version transition)
+ * 2. Current candles FULL COLOR
+ * 3. Overlay synced with pan/zoom
+ * 4. Story-telling visualization
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import styled from 'styled-components';
-import { createChart, CandlestickSeries } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
 import IdeaChartOverlay from './IdeaChartOverlay';
 
 const ChartWrapper = styled.div`
@@ -25,56 +26,6 @@ const ChartWrapper = styled.div`
 const ChartContainer = styled.div`
   width: 100%;
   height: ${({ $height }) => $height || 320}px;
-`;
-
-const ChartModeBadge = styled.div`
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: rgba(59, 130, 246, 0.95);
-  color: #ffffff;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  z-index: 20;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
-  pointer-events: none;
-`;
-
-const VersionBadge = styled.div`
-  position: absolute;
-  top: 14px;
-  right: 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(8px);
-  border: 1px solid #e2e8f0;
-  color: #334155;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  z-index: 20;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  pointer-events: none;
-  
-  .pattern {
-    text-transform: capitalize;
-    color: #3b82f6;
-  }
-  
-  .confidence {
-    color: ${({ $confidence }) => 
-      $confidence >= 0.7 ? '#16a34a' : 
-      $confidence >= 0.5 ? '#d97706' : '#64748b'};
-    font-weight: 700;
-  }
 `;
 
 const ReplayIndicator = styled.div`
@@ -177,7 +128,7 @@ function buildPerformanceZones(allIdeas, idea) {
     .slice(0, 7);
 }
 
-// Performance SVG Overlay
+// Performance SVG Overlay (for performance mode)
 const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries }) => {
   if (!zones?.length) return null;
   
@@ -234,7 +185,6 @@ const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries
         zIndex: 50,
       }}
     >
-      {/* Win/Loss Zones */}
       {zones.map((z, i) => {
         const y1 = toY(z.priceFrom);
         const y2 = toY(z.priceTo);
@@ -267,7 +217,6 @@ const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries
         );
       })}
       
-      {/* Result Dots */}
       {resultDots.map((d, i) => (
         <g key={`dot-${i}`}>
           <circle
@@ -341,6 +290,14 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
   
   const activeVersion = idea?.versions?.[activeVersionIndex ?? (idea?.versions?.length - 1)];
   
+  // Get version transition time for candle coloring
+  const versionTransitionTime = useMemo(() => {
+    if (!idea?.versions || idea.versions.length < 2) return null;
+    // Get timestamp of second-to-last version end or current version start
+    const currentVersion = idea.versions[activeVersionIndex ?? (idea.versions.length - 1)];
+    return currentVersion?.timestamp;
+  }, [idea, activeVersionIndex]);
+  
   // Create/update chart
   useEffect(() => {
     if (!chartRef.current || candles.length === 0) return;
@@ -374,7 +331,7 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
       },
       rightPriceScale: {
         borderColor: '#e2e8f0',
-        scaleMargins: { top: 0.12, bottom: 0.12 },
+        scaleMargins: { top: 0.15, bottom: 0.12 },
       },
       timeScale: {
         borderColor: '#e2e8f0',
@@ -388,20 +345,24 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     setChartInstance(chart);
     setDimensions({ width: w, height });
     
-    // LIGHT THEME CANDLES
+    // TWO CANDLE SERIES: Past (faded) + Current (full color)
+    // Unfortunately lightweight-charts doesn't support per-candle opacity
+    // So we use muted colors for "past" and vivid for "current"
+    
     const priceSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#e2e8f0',
-      downColor: '#cbd5e1',
-      borderUpColor: '#cbd5e1',
-      borderDownColor: '#94a3b8',
-      wickUpColor: '#cbd5e1',
-      wickDownColor: '#94a3b8',
+      upColor: '#16c784',  // Green for up
+      downColor: '#ea3943', // Red for down
+      borderUpColor: '#16c784',
+      borderDownColor: '#ea3943',
+      wickUpColor: '#16c784',
+      wickDownColor: '#ea3943',
       lastValueVisible: false,
       priceLineVisible: false,
     });
     
     setPriceSeriesInstance(priceSeries);
     
+    // Process candles - apply faded colors to past candles
     const seen = new Set();
     const mapped = candles
       .filter(c => c.time > 0)
@@ -410,6 +371,25 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
         if (seen.has(c.time)) return false;
         seen.add(c.time);
         return true;
+      })
+      .map(c => {
+        const isPast = versionTransitionTime && c.time < versionTransitionTime;
+        
+        // For past candles, we'll use different approach via borderVisible
+        // or just let them be - the overlay will show the evolution
+        return {
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          // Custom colors for visual hierarchy
+          color: isPast 
+            ? (c.close >= c.open ? '#94a3b8' : '#94a3b8')  // Muted gray for past
+            : undefined, // Default colors for current
+          wickColor: isPast ? '#94a3b8' : undefined,
+          borderColor: isPast ? '#94a3b8' : undefined,
+        };
       });
     
     priceSeries.setData(mapped);
@@ -433,7 +413,7 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
         chartInstanceRef.current = null;
       }
     };
-  }, [candles, height]);
+  }, [candles, height, versionTransitionTime]);
   
   const performanceZones = useMemo(() => 
     chartMode === 'performance' ? buildPerformanceZones(allIdeas, idea) : [],
@@ -446,7 +426,7 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     <ChartWrapper data-testid="idea-chart">
       <ChartContainer ref={chartRef} $height={height} />
       
-      {/* IDEA MODE: Idea Overlay */}
+      {/* IDEA MODE: Evolution Overlay */}
       {chartMode === 'idea' && (
         <IdeaChartOverlay
           idea={idea}
@@ -460,42 +440,19 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
       
       {/* PERFORMANCE MODE: Win/Loss Zones */}
       {chartMode === 'performance' && (
-        <PerformanceOverlay
-          zones={performanceZones}
-          allIdeas={allIdeas}
-          width={dimensions.width}
-          height={dimensions.height}
-          chart={chartInstance}
-          priceSeries={priceSeriesInstance}
-        />
-      )}
-      
-      {/* Mode Badge */}
-      {chartMode === 'idea' && (
-        <ChartModeBadge data-testid="chart-mode-badge">
-          IDEA MODE
-        </ChartModeBadge>
-      )}
-      {chartMode === 'performance' && (
-        <PerformanceBadge data-testid="performance-mode-badge">
-          PERFORMANCE
-        </PerformanceBadge>
-      )}
-      
-      {/* Version Info */}
-      {chartMode === 'idea' && activeVersion && (
-        <VersionBadge
-          $confidence={activeVersion.snapshot?.confidence}
-          data-testid="chart-version-badge"
-        >
-          V{activeVersion.v} — 
-          <span className="pattern">
-            {activeVersion.snapshot?.pattern?.replace(/_/g, ' ')}
-          </span>
-          <span className="confidence">
-            {Math.round((activeVersion.snapshot?.confidence || 0) * 100)}%
-          </span>
-        </VersionBadge>
+        <>
+          <PerformanceOverlay
+            zones={performanceZones}
+            allIdeas={allIdeas}
+            width={dimensions.width}
+            height={dimensions.height}
+            chart={chartInstance}
+            priceSeries={priceSeriesInstance}
+          />
+          <PerformanceBadge data-testid="performance-mode-badge">
+            PERFORMANCE
+          </PerformanceBadge>
+        </>
       )}
       
       {/* Replay indicator */}
