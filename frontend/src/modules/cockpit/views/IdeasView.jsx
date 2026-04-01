@@ -1,23 +1,17 @@
 /**
- * IdeasView v2 — Graph-First Ideas Mode
- * ======================================
+ * IdeasView.jsx — TEXT-ONLY Ideas Evolution Tracker
+ * ==================================================
  * 
- * New Architecture:
- * - NO left column
- * - Horizontal Idea Selector Strip at top
- * - Full-width Graph (center)
- * - Single Bottom Insight Panel (6 sections)
+ * NO CHART! Just text-based tracking:
+ * - Pattern A → Pattern B evolution
+ * - When pattern changed
+ * - Result (WIN/LOSS/ACTIVE)
  * 
- * Key UX:
- * - Auto-select first idea
- * - Graph Sync: clicking idea → chart instantly shows it
- * - Replay: V1 → V2 → V3 animation
- * - Evolution (pattern → pattern)
- * - Result badges
+ * Simple, clean, works.
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import styled, { keyframes, css } from 'styled-components';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import styled from 'styled-components';
 import { 
   Bookmark, 
   RefreshCw, 
@@ -27,87 +21,64 @@ import {
   TrendingUp,
   TrendingDown,
   ChevronRight,
-  Target,
-  Loader2,
-  Flame,
-  Play,
-  Square,
-  Zap,
   ArrowRight,
-  ArrowUp,
-  ArrowDown,
-  Sparkles,
+  Zap,
   Filter,
-  BarChart3
+  Trash2,
+  ExternalLink
 } from 'lucide-react';
-import IdeaChart from '../components/IdeaChart';
 import { useMarket } from '../../../store/marketStore';
 
 // ============================================
-// ANIMATIONS
-// ============================================
-
-const fadeIn = keyframes`
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
-
-// ============================================
-// NEW LAYOUT — GRAPH-FIRST (LIGHT THEME)
+// STYLED COMPONENTS — Clean, Text-Focused
 // ============================================
 
 const Container = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 0;
+  padding: 20px 24px;
   min-height: calc(100vh - 140px);
   background: #f8fafc;
 `;
 
-// Idea Selector Strip (replaces left column)
-const SelectorStrip = styled.div`
+const Header = styled.div`
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  overflow-x: auto;
-  
-  &::-webkit-scrollbar { height: 4px; }
-  &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-  
-  @media (max-width: 768px) {
-    padding: 10px 12px;
-    gap: 8px;
-  }
+  justify-content: space-between;
+  margin-bottom: 24px;
 `;
 
-const StripControls = styled.div`
+const Title = styled.h2`
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-right: 12px;
-  border-right: 1px solid #e2e8f0;
-  flex-shrink: 0;
+  gap: 10px;
+  
+  svg { color: #3b82f6; }
+`;
+
+const Controls = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
 `;
 
 const FilterBtn = styled.button`
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
+  gap: 5px;
+  padding: 8px 14px;
   border-radius: 8px;
   border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
   background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.08)' : '#ffffff'};
   color: ${({ $active }) => $active ? '#3b82f6' : '#64748b'};
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
   
-  svg { width: 12px; height: 12px; }
+  svg { width: 14px; height: 14px; }
   
   &:hover {
     border-color: #3b82f6;
@@ -119,8 +90,8 @@ const RefreshBtn = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   background: #ffffff;
@@ -128,460 +99,249 @@ const RefreshBtn = styled.button`
   cursor: pointer;
   transition: all 0.15s;
   
-  svg { width: 14px; height: 14px; }
+  svg { width: 16px; height: 16px; }
   
   &:hover { border-color: #3b82f6; color: #3b82f6; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
-// Idea Card (Horizontal Chip) — LIGHT THEME
-const IdeaChip = styled.div`
+// Ideas List
+const IdeasList = styled.div`
   display: flex;
   flex-direction: column;
-  min-width: 220px;
-  max-width: 260px;
-  padding: 10px 14px;
-  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.06)' : '#ffffff'};
-  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  flex-shrink: 0;
-  animation: ${fadeIn} 0.3s ease;
-  
-  ${({ $active }) => $active && css`
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-  `}
-  
-  &:hover {
-    border-color: #3b82f6;
-    background: rgba(59, 130, 246, 0.04);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-  }
+  gap: 16px;
 `;
 
-const ChipHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-`;
-
-const ChipAsset = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  
-  .symbol { 
-    font-size: 14px; 
-    font-weight: 700; 
-    color: #1e293b; 
-  }
-  .timeframe {
-    font-size: 10px;
-    font-weight: 600;
-    padding: 2px 5px;
-    background: rgba(100, 116, 139, 0.1);
-    border-radius: 4px;
-    color: #64748b;
-  }
-`;
-
-const ResultBadge = styled.span`
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
-  border-radius: 5px;
-  font-size: 9px;
-  font-weight: 600;
-  
-  svg { width: 10px; height: 10px; }
-  
-  ${({ $type }) => {
-    switch ($type) {
-      case 'correct': return `background: rgba(34, 197, 94, 0.12); color: #16a34a;`;
-      case 'wrong': return `background: rgba(239, 68, 68, 0.12); color: #dc2626;`;
-      case 'active': return `background: rgba(59, 130, 246, 0.12); color: #2563eb;`;
-      default: return `background: rgba(100, 116, 139, 0.1); color: #64748b;`;
-    }
-  }}
-`;
-
-const ChipEvolution = styled.div`
-  font-size: 12px;
-  color: #475569;
-  margin-bottom: 4px;
-  
-  .ghost { color: #94a3b8; text-decoration: line-through; }
-  .arrow { color: #3b82f6; margin: 0 4px; }
-  .current { text-transform: capitalize; font-weight: 500; color: #334155; }
-`;
-
-const ChipMeta = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 10px;
-  color: #64748b;
-  
-  .prob {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    &.up { color: #16a34a; }
-    &.down { color: #dc2626; }
-    svg { width: 10px; height: 10px; }
-  }
-  
-  .score {
-    font-weight: 600;
-    &.positive { color: #16a34a; }
-    &.negative { color: #dc2626; }
-  }
-`;
-
-// Graph Section (Full Width) — LIGHT THEME
-const GraphSection = styled.div`
-  position: relative;
-  width: 100%;
-  padding: 16px 20px;
-  background: #f8fafc;
-  animation: ${fadeIn} 0.3s ease;
-  
-  @media (max-width: 768px) {
-    padding: 12px;
-  }
-`;
-
-const GraphCard = styled.div`
-  position: relative;
+// Single Idea Card — TEXT FOCUSED
+const IdeaCard = styled.div`
   background: #ffffff;
   border-radius: 14px;
   border: 1px solid #e2e8f0;
-  overflow: hidden;
-  min-height: 480px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  
-  @media (max-width: 768px) {
-    min-height: 360px;
-  }
-`;
-
-// Bottom Insight Panel (Full Width) — LIGHT THEME
-const InsightPanel = styled.div`
-  background: #ffffff;
-  border-top: 1px solid #e2e8f0;
   padding: 20px 24px;
-  animation: ${fadeIn} 0.4s ease;
+  transition: all 0.2s;
   
-  @media (max-width: 768px) {
-    padding: 16px;
+  &:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
   }
 `;
 
-const InsightHeader = styled.div`
+const IdeaHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 `;
 
-const InsightTitle = styled.div`
+const AssetInfo = styled.div`
   display: flex;
   align-items: center;
   gap: 12px;
+`;
+
+const AssetBadge = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
   
-  .symbol { 
-    font-size: 20px; 
-    font-weight: 700; 
-    color: #1e293b; 
+  .symbol {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1e293b;
   }
+  
   .timeframe {
     font-size: 11px;
     font-weight: 600;
     padding: 3px 8px;
-    background: rgba(100, 116, 139, 0.1);
+    background: #f1f5f9;
     border-radius: 6px;
     color: #64748b;
   }
 `;
 
-const InsightActions = styled.div`
+const StatusBadge = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  
+  svg { width: 14px; height: 14px; }
+  
+  ${({ $status }) => {
+    switch ($status) {
+      case 'win': return `background: rgba(34, 197, 94, 0.1); color: #16a34a;`;
+      case 'loss': return `background: rgba(239, 68, 68, 0.1); color: #dc2626;`;
+      default: return `background: rgba(59, 130, 246, 0.1); color: #2563eb;`;
+    }
+  }}
+`;
+
+// Evolution Timeline — THE MAIN VISUAL
+const EvolutionTimeline = styled.div`
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 20px 0;
+`;
+
+const VersionBlock = styled.div`
+  flex: 1;
+  padding: 16px 20px;
+  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.06)' : '#f8fafc'};
+  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
+  border-radius: ${({ $position }) => 
+    $position === 'first' ? '12px 0 0 12px' : 
+    $position === 'last' ? '0 12px 12px 0' : '0'};
+  position: relative;
+  
+  ${({ $position }) => $position !== 'first' && `
+    margin-left: -1px;
+  `}
+`;
+
+const VersionLabel = styled.div`
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: ${({ $active }) => $active ? '#3b82f6' : '#94a3b8'};
+  margin-bottom: 8px;
+`;
+
+const PatternName = styled.div`
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  text-transform: capitalize;
+  margin-bottom: 6px;
+`;
+
+const PatternMeta = styled.div`
+  font-size: 12px;
+  color: #64748b;
+  
+  .confidence {
+    font-weight: 600;
+    color: ${({ $confidence }) => 
+      $confidence >= 0.7 ? '#16a34a' : 
+      $confidence >= 0.5 ? '#d97706' : '#64748b'};
+  }
+`;
+
+const VersionDate = styled.div`
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 8px;
+`;
+
+const TransitionArrow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, #f8fafc 0%, #ffffff 50%, #f8fafc 100%);
+  
+  svg {
+    width: 20px;
+    height: 20px;
+    color: #3b82f6;
+  }
+`;
+
+// Details Row
+const DetailsRow = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+`;
+
+const DetailBlock = styled.div`
+  .label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  
+  .value {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+    
+    &.positive { color: #16a34a; }
+    &.negative { color: #dc2626; }
+    &.neutral { color: #64748b; }
+  }
+`;
+
+const IdeaActions = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f1f5f9;
 `;
 
 const ActionBtn = styled.button`
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid ${({ $primary }) => $primary ? '#3b82f6' : '#e2e8f0'};
-  background: ${({ $primary }) => $primary ? 'rgba(59, 130, 246, 0.08)' : '#ffffff'};
-  color: ${({ $primary }) => $primary ? '#3b82f6' : '#64748b'};
-  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
+  font-size: 11px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
   
-  svg { width: 14px; height: 14px; }
+  svg { width: 12px; height: 12px; }
   
-  &:hover:not(:disabled) {
+  &:hover {
     border-color: #3b82f6;
     color: #3b82f6;
-    background: rgba(59, 130, 246, 0.06);
   }
   
-  &:disabled { opacity: 0.5; cursor: not-allowed; }
-`;
-
-// 6 Section Grid
-const InsightGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  
-  @media (max-width: 1200px) {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
+  &.danger:hover {
+    border-color: #ef4444;
+    color: #ef4444;
   }
 `;
 
-const InsightBlock = styled.div`
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  
-  .label {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #64748b;
-    margin-bottom: 10px;
-  }
-`;
-
-// Evolution Block
-const EvolutionContent = styled.div`
-  .main {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-    
-    .pattern { 
-      font-size: 16px; 
-      font-weight: 600; 
-      color: #1e293b;
-      text-transform: capitalize;
-    }
-    .arrow { color: #3b82f6; svg { width: 16px; height: 16px; } }
-  }
-  
-  .dates { font-size: 11px; color: #64748b; }
-`;
-
-// Probability Block
-const ProbContent = styled.div`
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 6px 0;
-    border-bottom: 1px solid #e2e8f0;
-    &:last-child { border-bottom: none; }
-  }
-  
-  .label { font-size: 12px; color: #64748b; }
-  
-  .value {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    font-weight: 600;
-    
-    &.up { color: #16a34a; }
-    &.down { color: #dc2626; }
-    
-    svg { width: 14px; height: 14px; }
-    
-    .change {
-      font-size: 10px;
-      padding: 2px 5px;
-      border-radius: 4px;
-      &.positive { background: rgba(34, 197, 94, 0.1); color: #16a34a; }
-      &.negative { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
-    }
-  }
-`;
-
-// Levels Block
-const LevelsContent = styled.div`
-  .level {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid #e2e8f0;
-    &:last-child { border-bottom: none; }
-    
-    .label { 
-      font-size: 11px; 
-      font-weight: 500;
-      &.breakout { color: #16a34a; }
-      &.invalidation { color: #dc2626; }
-      &.target { color: #2563eb; }
-    }
-    .price { 
-      font-size: 16px; 
-      font-weight: 700; 
-      color: #1e293b;
-    }
-  }
-`;
-
-// What Next Block
-const WhatNextContent = styled.div`
-  .text {
-    font-size: 14px;
-    color: #2563eb;
-    font-weight: 500;
-    line-height: 1.5;
-    
-    svg { 
-      width: 14px; 
-      height: 14px; 
-      display: inline; 
-      margin-right: 6px;
-      vertical-align: middle;
-    }
-  }
-`;
-
-// Score Block
-const ScoreContent = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  
-  .info {
-    .result { 
-      font-size: 14px; 
-      font-weight: 600; 
-      color: ${({ $positive }) => $positive ? '#16a34a' : $positive === false ? '#dc2626' : '#64748b'};
-      margin-bottom: 4px;
-    }
-    .impact { font-size: 11px; color: #64748b; }
-  }
-  
-  .score {
-    font-size: 28px;
-    font-weight: 700;
-    color: ${({ $positive }) => $positive ? '#16a34a' : $positive === false ? '#dc2626' : '#64748b'};
-  }
-`;
-
-// Timeline Block
-const TimelineContent = styled.div`
-  .header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-  }
-  
-  .versions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-`;
-
-const VersionBtn = styled.button`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
-  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.08)' : '#ffffff'};
-  color: ${({ $active }) => $active ? '#3b82f6' : '#64748b'};
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 65px;
-  
-  .version { margin-bottom: 2px; }
-  .date { font-size: 9px; font-weight: 400; opacity: 0.7; }
-  
-  &:hover { border-color: #3b82f6; color: #3b82f6; }
-`;
-
-// Empty States
+// Empty State
 const EmptyState = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 24px;
+  padding: 80px 24px;
   text-align: center;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
   
-  svg { width: 56px; height: 56px; color: #cbd5e1; margin-bottom: 16px; }
-  h4 { font-size: 16px; font-weight: 600; color: #1e293b; margin: 0 0 6px 0; }
-  p { font-size: 13px; color: #64748b; margin: 0; }
-`;
-
-const LoadingOverlay = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px;
-  
-  svg { animation: spin 1s linear infinite; color: #3b82f6; }
-  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-`;
-
-// Chart Mode Toggle (on graph)
-const ChartModeToggle = styled.div`
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  display: flex;
-  gap: 4px;
-  z-index: 25;
-`;
-
-const ModeBtn = styled.button`
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid ${({ $active, $color }) => $active ? ($color || '#3b82f6') : '#e2e8f0'};
-  background: ${({ $active, $color }) => $active ? `${$color || '#3b82f6'}15` : 'rgba(255, 255, 255, 0.95)'};
-  color: ${({ $active, $color }) => $active ? ($color || '#3b82f6') : '#64748b'};
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  backdrop-filter: blur(4px);
-  transition: all 0.15s;
-  
-  &:hover {
-    border-color: ${({ $color }) => $color || '#3b82f6'};
-    color: ${({ $color }) => $color || '#3b82f6'};
-  }
+  svg { width: 48px; height: 48px; color: #cbd5e1; margin-bottom: 16px; }
+  h4 { font-size: 16px; font-weight: 600; color: #1e293b; margin: 0 0 8px 0; }
+  p { font-size: 13px; color: #64748b; margin: 0; max-width: 300px; }
 `;
 
 // ============================================
-// MOCK DATA — with REAL pattern boundaries
+// MOCK DATA
 // ============================================
 const MOCK_IDEAS = [
   {
@@ -601,40 +361,7 @@ const MOCK_IDEAS = [
           confidence: 0.62,
           bias: 'bullish',
           probability: { up: 0.62, down: 0.28 },
-          levels: { 
-            top: 70500, 
-            bottom: 67500,
-            start_time: Date.now() / 1000 - 86400 * 14,
-            end_time: Date.now() / 1000 - 86400 * 8,
-          },
-          // REAL boundaries from swing points
-          boundaries: [
-            {
-              id: 'v1-upper',
-              kind: 'trendline',
-              x1: Date.now() / 1000 - 86400 * 14,
-              y1: 70500,
-              x2: Date.now() / 1000 - 86400 * 8,
-              y2: 70500,
-              style: 'resistance',
-            },
-            {
-              id: 'v1-lower',
-              kind: 'trendline',
-              x1: Date.now() / 1000 - 86400 * 14,
-              y1: 67500,
-              x2: Date.now() / 1000 - 86400 * 8,
-              y2: 67500,
-              style: 'support',
-            },
-          ],
-          anchors: [
-            { time: Date.now() / 1000 - 86400 * 14, price: 70500, type: 'upper' },
-            { time: Date.now() / 1000 - 86400 * 11, price: 70400, type: 'upper' },
-            { time: Date.now() / 1000 - 86400 * 14, price: 67500, type: 'lower' },
-            { time: Date.now() / 1000 - 86400 * 10, price: 67600, type: 'lower' },
-          ],
-          interpretation: 'Market consolidating in tight range',
+          levels: { top: 70500, bottom: 67500 },
         }
       },
       {
@@ -646,46 +373,11 @@ const MOCK_IDEAS = [
           confidence: 0.78,
           bias: 'bullish',
           probability: { up: 0.78, down: 0.18 },
-          levels: { 
-            top: 71000,
-            bottom: 68000,
-            start_time: Date.now() / 1000 - 86400 * 7,
-            end_time: Date.now() / 1000 - 86400 * 1,
-          },
-          // CONVERGING trendlines (triangle)
-          boundaries: [
-            {
-              id: 'v2-upper',
-              kind: 'trendline',
-              x1: Date.now() / 1000 - 86400 * 7,
-              y1: 71500,
-              x2: Date.now() / 1000 - 86400 * 1,
-              y2: 70000, // Lower high
-              style: 'resistance',
-            },
-            {
-              id: 'v2-lower',
-              kind: 'trendline',
-              x1: Date.now() / 1000 - 86400 * 7,
-              y1: 68000,
-              x2: Date.now() / 1000 - 86400 * 1,
-              y2: 69500, // Higher low
-              style: 'support',
-            },
-          ],
-          anchors: [
-            { time: Date.now() / 1000 - 86400 * 7, price: 71500, type: 'upper' },
-            { time: Date.now() / 1000 - 86400 * 4, price: 70800, type: 'upper' },
-            { time: Date.now() / 1000 - 86400 * 1, price: 70000, type: 'upper' },
-            { time: Date.now() / 1000 - 86400 * 6, price: 68000, type: 'lower' },
-            { time: Date.now() / 1000 - 86400 * 3, price: 68800, type: 'lower' },
-            { time: Date.now() / 1000 - 86400 * 1, price: 69500, type: 'lower' },
-          ],
-          interpretation: 'Market was consolidating → breakout confirmed',
+          levels: { top: 71000, bottom: 68000 },
         }
       }
     ],
-    created_at: new Date(Date.now() - 86400 * 7 * 1000).toISOString(),
+    created_at: new Date(Date.now() - 86400 * 12 * 1000).toISOString(),
   },
   {
     idea_id: 'idea-002',
@@ -699,44 +391,12 @@ const MOCK_IDEAS = [
         v: 1,
         timestamp: Date.now() / 1000 - 86400 * 3,
         snapshot: {
-          pattern: 'ascending_triangle',
+          pattern: 'ascending triangle',
           lifecycle: 'confirmed',
           confidence: 0.72,
           bias: 'bullish',
           probability: { up: 0.72, down: 0.24 },
-          levels: { 
-            top: 3850, 
-            bottom: 3420,
-            start_time: Date.now() / 1000 - 86400 * 6,
-            end_time: Date.now() / 1000 - 86400 * 1,
-          },
-          boundaries: [
-            {
-              id: 'eth-upper',
-              kind: 'trendline',
-              x1: Date.now() / 1000 - 86400 * 6,
-              y1: 3850,
-              x2: Date.now() / 1000 - 86400 * 1,
-              y2: 3850, // Flat resistance
-              style: 'resistance',
-            },
-            {
-              id: 'eth-lower',
-              kind: 'trendline',
-              x1: Date.now() / 1000 - 86400 * 6,
-              y1: 3420,
-              x2: Date.now() / 1000 - 86400 * 1,
-              y2: 3700, // Rising support
-              style: 'support',
-            },
-          ],
-          anchors: [
-            { time: Date.now() / 1000 - 86400 * 6, price: 3850, type: 'upper' },
-            { time: Date.now() / 1000 - 86400 * 3, price: 3850, type: 'upper' },
-            { time: Date.now() / 1000 - 86400 * 5, price: 3420, type: 'lower' },
-            { time: Date.now() / 1000 - 86400 * 2, price: 3600, type: 'lower' },
-          ],
-          interpretation: 'Strong accumulation pattern forming',
+          levels: { top: 3850, bottom: 3420 },
         }
       }
     ],
@@ -754,34 +414,24 @@ const MOCK_IDEAS = [
         v: 1,
         timestamp: Date.now() / 1000 - 86400 * 10,
         snapshot: {
-          pattern: 'head_and_shoulders',
+          pattern: 'head and shoulders',
           lifecycle: 'forming',
           confidence: 0.55,
           bias: 'bearish',
           probability: { up: 0.35, down: 0.58 },
-          levels: { 
-            top: 185, 
-            bottom: 142,
-            start_time: Date.now() / 1000 - 86400 * 13,
-            end_time: Date.now() / 1000 - 86400 * 8,
-          },
-          boundaries: [
-            {
-              id: 'sol-neckline',
-              kind: 'trendline',
-              x1: Date.now() / 1000 - 86400 * 13,
-              y1: 155,
-              x2: Date.now() / 1000 - 86400 * 8,
-              y2: 155,
-              style: 'neckline',
-            },
-          ],
-          anchors: [
-            { time: Date.now() / 1000 - 86400 * 12, price: 170, type: 'upper' }, // Left shoulder
-            { time: Date.now() / 1000 - 86400 * 10, price: 185, type: 'upper' }, // Head
-            { time: Date.now() / 1000 - 86400 * 9, price: 168, type: 'upper' },  // Right shoulder
-          ],
-          interpretation: 'Distribution pattern detected',
+          levels: { top: 185, bottom: 142 },
+        }
+      },
+      {
+        v: 2,
+        timestamp: Date.now() / 1000 - 86400 * 6,
+        snapshot: {
+          pattern: 'double top',
+          lifecycle: 'confirmed',
+          confidence: 0.48,
+          bias: 'bearish',
+          probability: { up: 0.38, down: 0.55 },
+          levels: { top: 180, bottom: 155 },
         }
       }
     ],
@@ -790,8 +440,13 @@ const MOCK_IDEAS = [
 ];
 
 // ============================================
-// HELPER FUNCTIONS
+// HELPERS
 // ============================================
+
+const formatDate = (timestamp) => {
+  const date = new Date(timestamp * 1000);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
 
 const formatTimeAgo = (timestamp) => {
   const seconds = Math.floor((Date.now() / 1000) - timestamp);
@@ -802,127 +457,29 @@ const formatTimeAgo = (timestamp) => {
   return 'now';
 };
 
-const formatDate = (timestamp) => {
-  return new Date(timestamp * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const getStatus = (idea) => {
+  if (idea.status === 'active') return 'active';
+  if (idea.outcome === 'success_up' || idea.outcome === 'success_down') return 'win';
+  return 'loss';
 };
 
-const formatPrice = (price) => {
-  if (!price) return '-';
-  return '$' + price.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-};
-
-const getResultType = (status, outcome) => {
-  if (status === 'active') return 'active';
-  if (outcome === 'success_up' || outcome === 'success_down') return 'correct';
-  if (outcome === 'invalidated') return 'wrong';
-  return 'neutral';
-};
-
-const getResultLabel = (status, outcome) => {
-  if (status === 'active') return 'Active';
-  if (outcome === 'success_up') return 'Breakout UP';
-  if (outcome === 'success_down') return 'Breakdown';
-  if (outcome === 'invalidated') return 'Wrong';
-  return 'Neutral';
-};
-
-const buildInterpretation = (v1, v2, outcome) => {
-  if (!v2) return v1?.snapshot?.interpretation || 'Analysis in progress...';
-  if (outcome === 'success_up') return 'Market was consolidating → breakout confirmed';
-  if (outcome === 'success_down') return 'Market failed structure → breakdown confirmed';
-  if (outcome === 'invalidated') return 'Pattern invalidated → structure broken';
-  return v2.snapshot?.interpretation || `${v1.snapshot.pattern} → ${v2.snapshot.pattern}`;
-};
-
-const buildWhatNext = (levels, lifecycle, outcome) => {
-  if (outcome === 'success_up') return `Watch continuation above ${formatPrice(levels?.top)}`;
-  if (outcome === 'success_down') return `Watch continuation below ${formatPrice(levels?.bottom)}`;
-  if (lifecycle === 'forming') return `Wait for breakout confirmation`;
-  return `Key level: ${formatPrice(levels?.top)}`;
+const getStatusLabel = (idea) => {
+  const status = getStatus(idea);
+  if (status === 'win') return 'Correct';
+  if (status === 'loss') return 'Wrong';
+  return 'Active';
 };
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
-
-// Normalize backend idea to frontend format
-function normalizeIdea(raw) {
-  const versions = (raw.versions || []).map((v, i) => {
-    const setupSnapshot = v.setup_snapshot || v.snapshot || {};
-    const pattern = setupSnapshot.pattern || 
-      setupSnapshot.top_setup?.setup_type || 'unknown';
-    const confidence = v.confidence || setupSnapshot.confidence || 0.5;
-    const probability = setupSnapshot.probability || { up: confidence, down: 1 - confidence };
-    const levels = setupSnapshot.levels || {};
-    const interpretation = v.ai_explanation || setupSnapshot.interpretation || '';
-    const lifecycle = setupSnapshot.lifecycle || 'unknown';
-    
-    return {
-      v: v.version || v.v || i + 1,
-      timestamp: typeof v.timestamp === 'string' 
-        ? new Date(v.timestamp).getTime() / 1000 
-        : v.timestamp,
-      snapshot: {
-        pattern,
-        lifecycle,
-        confidence,
-        bias: v.technical_bias || setupSnapshot.bias || 'neutral',
-        probability,
-        levels,
-        interpretation,
-      },
-    };
-  });
-  
-  let outcome = raw.outcome || null;
-  let status = raw.status || 'active';
-  let score = raw.score ?? 0;
-  
-  if (raw.validations?.length) {
-    const lastVal = raw.validations[raw.validations.length - 1];
-    if (lastVal.result === 'correct' || lastVal.result === 'partially_correct') {
-      outcome = outcome || 'success_up';
-      score = 1;
-      status = 'completed';
-    }
-    if (lastVal.result === 'invalidated') {
-      outcome = outcome || 'invalidated';
-      score = -1;
-      status = 'completed';
-    }
-  }
-  
-  if (raw.result?.status === 'correct') { score = 1; status = 'completed'; }
-  if (raw.result?.status === 'wrong') { score = -1; status = 'completed'; }
-  if (raw.result?.outcome) { outcome = raw.result.outcome; }
-  if (status === 'invalidated') { status = 'completed'; outcome = outcome || 'invalidated'; score = -1; }
-  
-  return {
-    idea_id: raw.idea_id || raw._id || String(Math.random()),
-    asset: raw.asset || raw.symbol || 'UNKNOWN',
-    timeframe: raw.timeframe || '4H',
-    status,
-    outcome,
-    score,
-    versions,
-    created_at: raw.created_at || new Date().toISOString(),
-  };
-}
 
 // ============================================
 // MAIN COMPONENT
 // ============================================
 
 const IdeasView = () => {
-  const { symbol } = useMarket();
   const [ideas, setIdeas] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [selectedIdea, setSelectedIdea] = useState(null);
-  const [activeVersionIndex, setActiveVersionIndex] = useState(0);
   const [filter, setFilter] = useState('all');
-  const [chartMode, setChartMode] = useState('idea');
-  
-  // Replay state
-  const [isReplaying, setIsReplaying] = useState(false);
-  const replayIntervalRef = useRef(null);
 
   // Fetch ideas
   const fetchIdeas = useCallback(async () => {
@@ -933,8 +490,7 @@ const IdeasView = () => {
         const data = await res.json();
         const rawItems = data.ideas || data.items || [];
         if (rawItems.length > 0) {
-          const items = rawItems.map(normalizeIdea);
-          setIdeas(items);
+          setIdeas(rawItems);
           setLoading(false);
           return;
         }
@@ -950,379 +506,169 @@ const IdeasView = () => {
 
   useEffect(() => { fetchIdeas(); }, [fetchIdeas]);
 
-  // Auto-select first idea
-  useEffect(() => {
-    if (!selectedIdea && ideas.length > 0) {
-      setSelectedIdea(ideas[0]);
-      setActiveVersionIndex(ideas[0].versions.length - 1);
-    }
-  }, [ideas, selectedIdea]);
-
-  // Select idea handler
-  const handleSelectIdea = useCallback((idea) => {
-    if (replayIntervalRef.current) {
-      clearInterval(replayIntervalRef.current);
-      replayIntervalRef.current = null;
-    }
-    setIsReplaying(false);
-    setSelectedIdea(idea);
-    setActiveVersionIndex(idea.versions.length - 1);
-  }, []);
-
-  // Replay handler
-  const handleReplay = useCallback(() => {
-    if (!selectedIdea || selectedIdea.versions.length < 2) return;
-    
-    if (replayIntervalRef.current) {
-      clearInterval(replayIntervalRef.current);
-      replayIntervalRef.current = null;
-      setIsReplaying(false);
-      setActiveVersionIndex(selectedIdea.versions.length - 1);
-      return;
-    }
-    
-    setIsReplaying(true);
-    setActiveVersionIndex(0);
-    let idx = 0;
-    
-    replayIntervalRef.current = setInterval(() => {
-      idx++;
-      if (idx >= selectedIdea.versions.length) {
-        clearInterval(replayIntervalRef.current);
-        replayIntervalRef.current = null;
-        setIsReplaying(false);
-        return;
-      }
-      setActiveVersionIndex(idx);
-    }, 800);
-  }, [selectedIdea]);
-
-  useEffect(() => {
-    return () => {
-      if (replayIntervalRef.current) clearInterval(replayIntervalRef.current);
-    };
-  }, []);
-
   // Filter ideas
   const filteredIdeas = useMemo(() => {
     return ideas.filter(idea => {
       if (filter === 'active') return idea.status === 'active';
-      if (filter === 'completed') return idea.status === 'completed';
-      if (filter === 'correct') return idea.outcome === 'success_up' || idea.outcome === 'success_down';
-      if (filter === 'wrong') return idea.outcome === 'invalidated';
+      if (filter === 'win') return idea.outcome === 'success_up' || idea.outcome === 'success_down';
+      if (filter === 'loss') return idea.outcome === 'invalidated';
       return true;
     });
   }, [ideas, filter]);
 
-  // Active version data
-  const activeVersion = selectedIdea?.versions?.[activeVersionIndex];
-  const firstVersion = selectedIdea?.versions?.[0];
+  // Stats
+  const stats = useMemo(() => {
+    const wins = ideas.filter(i => i.outcome === 'success_up' || i.outcome === 'success_down').length;
+    const losses = ideas.filter(i => i.outcome === 'invalidated').length;
+    const total = wins + losses;
+    const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+    return { wins, losses, winRate, active: ideas.filter(i => i.status === 'active').length };
+  }, [ideas]);
 
   return (
     <Container data-testid="ideas-view">
-      {/* IDEA SELECTOR STRIP (replaces left column) */}
-      <SelectorStrip data-testid="idea-selector-strip">
-        <StripControls>
-          <FilterBtn 
-            $active={filter === 'all'} 
-            onClick={() => setFilter('all')}
-            data-testid="filter-all"
-          >
-            All
+      <Header>
+        <Title>
+          <Bookmark size={22} />
+          Saved Ideas
+        </Title>
+        
+        <Controls>
+          <FilterBtn $active={filter === 'all'} onClick={() => setFilter('all')}>
+            All ({ideas.length})
           </FilterBtn>
-          <FilterBtn 
-            $active={filter === 'active'} 
-            onClick={() => setFilter('active')}
-            data-testid="filter-active"
-          >
-            <Zap /> Active
+          <FilterBtn $active={filter === 'active'} onClick={() => setFilter('active')}>
+            <Zap size={12} /> Active ({stats.active})
           </FilterBtn>
-          <FilterBtn 
-            $active={filter === 'correct'} 
-            onClick={() => setFilter('correct')}
-            data-testid="filter-correct"
-          >
-            <CheckCircle2 /> Win
+          <FilterBtn $active={filter === 'win'} onClick={() => setFilter('win')}>
+            <CheckCircle2 size={12} /> Win ({stats.wins})
           </FilterBtn>
-          <FilterBtn 
-            $active={filter === 'wrong'} 
-            onClick={() => setFilter('wrong')}
-            data-testid="filter-wrong"
-          >
-            <XCircle /> Loss
+          <FilterBtn $active={filter === 'loss'} onClick={() => setFilter('loss')}>
+            <XCircle size={12} /> Loss ({stats.losses})
           </FilterBtn>
-          <RefreshBtn onClick={fetchIdeas} disabled={loading} data-testid="refresh-ideas-btn">
+          <RefreshBtn onClick={fetchIdeas} disabled={loading}>
             <RefreshCw />
           </RefreshBtn>
-        </StripControls>
-        
-        {/* Idea Chips */}
-        {loading ? (
-          <LoadingOverlay><Loader2 size={20} /></LoadingOverlay>
-        ) : filteredIdeas.length === 0 ? (
-          <span style={{ color: '#64748b', fontSize: 12 }}>No ideas found</span>
-        ) : (
-          filteredIdeas.map(idea => {
-            const v1 = idea.versions[0];
-            const v2 = idea.versions[idea.versions.length - 1];
+        </Controls>
+      </Header>
+
+      {filteredIdeas.length === 0 ? (
+        <EmptyState>
+          <Bookmark />
+          <h4>No saved ideas</h4>
+          <p>Save patterns from the analysis tabs to track their evolution over time</p>
+        </EmptyState>
+      ) : (
+        <IdeasList>
+          {filteredIdeas.map(idea => {
+            const status = getStatus(idea);
+            const firstVersion = idea.versions[0];
+            const lastVersion = idea.versions[idea.versions.length - 1];
             const hasEvolution = idea.versions.length > 1;
-            const resultType = getResultType(idea.status, idea.outcome);
             
             return (
-              <IdeaChip
-                key={idea.idea_id}
-                $active={selectedIdea?.idea_id === idea.idea_id}
-                onClick={() => handleSelectIdea(idea)}
-                data-testid={`idea-chip-${idea.idea_id}`}
-              >
-                <ChipHeader>
-                  <ChipAsset>
-                    <span className="symbol">{idea.asset.replace('USDT', '')}</span>
-                    <span className="timeframe">{idea.timeframe}</span>
-                  </ChipAsset>
-                  <ResultBadge $type={resultType}>
-                    {resultType === 'correct' && <CheckCircle2 />}
-                    {resultType === 'wrong' && <XCircle />}
-                    {resultType === 'active' && <Zap />}
-                    {getResultLabel(idea.status, idea.outcome)}
-                  </ResultBadge>
-                </ChipHeader>
+              <IdeaCard key={idea.idea_id} data-testid={`idea-card-${idea.idea_id}`}>
+                <IdeaHeader>
+                  <AssetInfo>
+                    <AssetBadge>
+                      <span className="symbol">{idea.asset.replace('USDT', '')}</span>
+                      <span className="timeframe">{idea.timeframe}</span>
+                    </AssetBadge>
+                  </AssetInfo>
+                  
+                  <StatusBadge $status={status}>
+                    {status === 'win' && <CheckCircle2 />}
+                    {status === 'loss' && <XCircle />}
+                    {status === 'active' && <Zap />}
+                    {getStatusLabel(idea)}
+                  </StatusBadge>
+                </IdeaHeader>
                 
-                <ChipEvolution>
-                  <span className={hasEvolution ? 'ghost' : 'current'}>
-                    {v1.snapshot.pattern.replace(/_/g, ' ')}
-                  </span>
-                  {hasEvolution && (
-                    <>
-                      <span className="arrow">→</span>
-                      <span className="current">{v2.snapshot.pattern.replace(/_/g, ' ')}</span>
-                    </>
-                  )}
-                </ChipEvolution>
+                {/* Evolution Timeline — THE MAIN VISUAL */}
+                <EvolutionTimeline>
+                  {idea.versions.map((version, idx) => {
+                    const isActive = idx === idea.versions.length - 1;
+                    const isFirst = idx === 0;
+                    const isLast = idx === idea.versions.length - 1;
+                    const position = isFirst && isLast ? 'single' : isFirst ? 'first' : isLast ? 'last' : 'middle';
+                    
+                    return (
+                      <React.Fragment key={version.v}>
+                        <VersionBlock 
+                          $active={isActive} 
+                          $position={position === 'single' ? 'first' : position}
+                          style={position === 'single' ? { borderRadius: '12px' } : {}}
+                        >
+                          <VersionLabel $active={isActive}>
+                            {isActive ? 'Current' : `V${version.v}`}
+                          </VersionLabel>
+                          <PatternName>
+                            {version.snapshot.pattern}
+                          </PatternName>
+                          <PatternMeta $confidence={version.snapshot.confidence}>
+                            <span className="confidence">
+                              {Math.round(version.snapshot.confidence * 100)}%
+                            </span>
+                            {' '}confidence • {version.snapshot.bias}
+                          </PatternMeta>
+                          <VersionDate>
+                            {formatDate(version.timestamp)}
+                          </VersionDate>
+                        </VersionBlock>
+                        
+                        {idx < idea.versions.length - 1 && (
+                          <TransitionArrow>
+                            <ArrowRight />
+                          </TransitionArrow>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </EvolutionTimeline>
                 
-                <ChipMeta>
-                  <span className={`prob ${v2.snapshot.probability.up > 0.5 ? 'up' : 'down'}`}>
-                    {v2.snapshot.probability.up > 0.5 ? <ArrowUp /> : <ArrowDown />}
-                    {Math.round(v2.snapshot.probability.up * 100)}%
-                  </span>
-                  <Clock size={10} />
-                  <span>{formatTimeAgo(v1.timestamp)}</span>
-                  {idea.score !== 0 && (
-                    <span className={`score ${idea.score > 0 ? 'positive' : 'negative'}`}>
-                      {idea.score > 0 ? '+1' : '-1'}
-                    </span>
-                  )}
-                </ChipMeta>
-              </IdeaChip>
+                {/* Details */}
+                <DetailsRow>
+                  <DetailBlock>
+                    <div className="label">Breakout Prob</div>
+                    <div className={`value ${lastVersion.snapshot.probability.up > 0.6 ? 'positive' : 'neutral'}`}>
+                      {Math.round(lastVersion.snapshot.probability.up * 100)}%
+                    </div>
+                  </DetailBlock>
+                  
+                  <DetailBlock>
+                    <div className="label">Breakdown Prob</div>
+                    <div className={`value ${lastVersion.snapshot.probability.down > 0.6 ? 'negative' : 'neutral'}`}>
+                      {Math.round(lastVersion.snapshot.probability.down * 100)}%
+                    </div>
+                  </DetailBlock>
+                  
+                  <DetailBlock>
+                    <div className="label">Key Levels</div>
+                    <div className="value">
+                      {lastVersion.snapshot.levels.top?.toLocaleString()} / {lastVersion.snapshot.levels.bottom?.toLocaleString()}
+                    </div>
+                  </DetailBlock>
+                  
+                  <DetailBlock>
+                    <div className="label">Score</div>
+                    <div className={`value ${idea.score > 0 ? 'positive' : idea.score < 0 ? 'negative' : 'neutral'}`}>
+                      {idea.score > 0 ? `+${idea.score}` : idea.score < 0 ? idea.score : '—'}
+                    </div>
+                  </DetailBlock>
+                </DetailsRow>
+                
+                <IdeaActions>
+                  <ActionBtn>
+                    <ExternalLink /> View in Chart
+                  </ActionBtn>
+                  <ActionBtn className="danger">
+                    <Trash2 /> Remove
+                  </ActionBtn>
+                </IdeaActions>
+              </IdeaCard>
             );
-          })
-        )}
-      </SelectorStrip>
-
-      {/* GRAPH SECTION (Full Width) */}
-      <GraphSection data-testid="graph-section">
-        {selectedIdea ? (
-          <GraphCard>
-            <IdeaChart
-              idea={selectedIdea}
-              activeVersionIndex={activeVersionIndex}
-              isReplaying={isReplaying}
-              height={480}
-              chartMode={chartMode}
-              allIdeas={ideas}
-            />
-            
-            {/* Chart Mode Toggle */}
-            <ChartModeToggle>
-              <ModeBtn
-                $active={chartMode === 'idea'}
-                $color="#3b82f6"
-                onClick={() => setChartMode('idea')}
-                data-testid="chart-mode-idea-btn"
-              >
-                Idea
-              </ModeBtn>
-              <ModeBtn
-                $active={chartMode === 'performance'}
-                $color="#8b5cf6"
-                onClick={() => setChartMode('performance')}
-                data-testid="chart-mode-performance-btn"
-              >
-                Performance
-              </ModeBtn>
-            </ChartModeToggle>
-          </GraphCard>
-        ) : (
-          <GraphCard>
-            <EmptyState>
-              <Sparkles />
-              <h4>Select an Idea</h4>
-              <p>Choose an idea from the strip above to view analysis</p>
-            </EmptyState>
-          </GraphCard>
-        )}
-      </GraphSection>
-
-      {/* BOTTOM INSIGHT PANEL (6 Sections) */}
-      {selectedIdea && activeVersion && (
-        <InsightPanel data-testid="insight-panel">
-          <InsightHeader>
-            <InsightTitle>
-              <ResultBadge $type={getResultType(selectedIdea.status, selectedIdea.outcome)} style={{ padding: '4px 10px', fontSize: 11 }}>
-                {getResultLabel(selectedIdea.status, selectedIdea.outcome)}
-              </ResultBadge>
-              <span className="symbol">{selectedIdea.asset.replace('USDT', '')}</span>
-              <span className="timeframe">{selectedIdea.timeframe}</span>
-            </InsightTitle>
-            
-            <InsightActions>
-              {selectedIdea.versions.length > 1 && (
-                <ActionBtn
-                  onClick={handleReplay}
-                  data-testid="replay-btn"
-                  $primary={isReplaying}
-                >
-                  {isReplaying ? <><Square size={12} /> Stop</> : <><Play size={12} /> Replay</>}
-                </ActionBtn>
-              )}
-            </InsightActions>
-          </InsightHeader>
-          
-          <InsightGrid>
-            {/* 1. Evolution */}
-            <InsightBlock data-testid="evolution-block">
-              <div className="label">Evolution</div>
-              <EvolutionContent>
-                <div className="main">
-                  <span className="pattern">{firstVersion.snapshot.pattern.replace(/_/g, ' ')}</span>
-                  {selectedIdea.versions.length > 1 && (
-                    <>
-                      <span className="arrow"><ArrowRight /></span>
-                      <span className="pattern">{activeVersion.snapshot.pattern.replace(/_/g, ' ')}</span>
-                    </>
-                  )}
-                </div>
-                <div className="dates">
-                  {formatDate(firstVersion.timestamp)}
-                  {selectedIdea.versions.length > 1 && ` → ${formatDate(activeVersion.timestamp)}`}
-                </div>
-              </EvolutionContent>
-            </InsightBlock>
-            
-            {/* 2. Probability */}
-            <InsightBlock data-testid="probability-block">
-              <div className="label">Probability</div>
-              <ProbContent>
-                <div className="row">
-                  <span className="label">AI Breakout</span>
-                  <span className="value up">
-                    <TrendingUp />
-                    {Math.round(activeVersion.snapshot.probability.up * 100)}%
-                    {selectedIdea.versions.length > 1 && (
-                      <span className={`change ${activeVersion.snapshot.probability.up > firstVersion.snapshot.probability.up ? 'positive' : 'negative'}`}>
-                        {activeVersion.snapshot.probability.up > firstVersion.snapshot.probability.up ? '+' : ''}
-                        {Math.round((activeVersion.snapshot.probability.up - firstVersion.snapshot.probability.up) * 100)}%
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="row">
-                  <span className="label">AI Breakdown</span>
-                  <span className="value down">
-                    <TrendingDown />
-                    {Math.round(activeVersion.snapshot.probability.down * 100)}%
-                  </span>
-                </div>
-                <div className="row">
-                  <span className="label">Confidence</span>
-                  <span className="value" style={{ color: '#f1f5f9' }}>
-                    {Math.round(activeVersion.snapshot.confidence * 100)}%
-                  </span>
-                </div>
-              </ProbContent>
-            </InsightBlock>
-            
-            {/* 3. Key Levels */}
-            <InsightBlock data-testid="levels-block">
-              <div className="label">Key Levels</div>
-              <LevelsContent>
-                <div className="level">
-                  <span className="label breakout">Breakout</span>
-                  <span className="price">{formatPrice(activeVersion.snapshot.levels?.top)}</span>
-                </div>
-                <div className="level">
-                  <span className="label invalidation">Invalidation</span>
-                  <span className="price">{formatPrice(activeVersion.snapshot.levels?.bottom)}</span>
-                </div>
-              </LevelsContent>
-            </InsightBlock>
-            
-            {/* 4. What Next */}
-            <InsightBlock data-testid="what-next-block">
-              <div className="label">What Next</div>
-              <WhatNextContent>
-                <div className="text">
-                  <Target />
-                  {buildWhatNext(activeVersion.snapshot.levels, activeVersion.snapshot.lifecycle, selectedIdea.outcome)}
-                </div>
-              </WhatNextContent>
-            </InsightBlock>
-            
-            {/* 5. Score */}
-            <InsightBlock data-testid="score-block">
-              <div className="label">Result</div>
-              <ScoreContent $positive={selectedIdea.score > 0 ? true : selectedIdea.score < 0 ? false : null}>
-                <div className="info">
-                  <div className="result">
-                    {selectedIdea.score > 0 ? 'Correct' : selectedIdea.score < 0 ? 'Wrong' : 'Pending'}
-                  </div>
-                  <div className="impact">Accuracy impact</div>
-                </div>
-                <div className="score">
-                  {selectedIdea.score > 0 ? '+1' : selectedIdea.score < 0 ? '-1' : '—'}
-                </div>
-              </ScoreContent>
-            </InsightBlock>
-            
-            {/* 6. Version Timeline */}
-            <InsightBlock data-testid="timeline-block">
-              <div className="label">Version Timeline</div>
-              <TimelineContent>
-                <div className="header">
-                  {selectedIdea.versions.length > 1 && (
-                    <ActionBtn
-                      onClick={handleReplay}
-                      data-testid="timeline-replay-btn"
-                      style={{ padding: '4px 10px', fontSize: 10 }}
-                    >
-                      {isReplaying ? <><Square size={10} /> Stop</> : <><Play size={10} /> Replay</>}
-                    </ActionBtn>
-                  )}
-                </div>
-                <div className="versions">
-                  {selectedIdea.versions.map((v, i) => (
-                    <VersionBtn
-                      key={v.v}
-                      $active={activeVersionIndex === i}
-                      onClick={() => {
-                        if (replayIntervalRef.current) {
-                          clearInterval(replayIntervalRef.current);
-                          replayIntervalRef.current = null;
-                          setIsReplaying(false);
-                        }
-                        setActiveVersionIndex(i);
-                      }}
-                      data-testid={`version-btn-v${v.v}`}
-                    >
-                      <span className="version">V{v.v}</span>
-                      <span className="date">{formatDate(v.timestamp)}</span>
-                    </VersionBtn>
-                  ))}
-                </div>
-              </TimelineContent>
-            </InsightBlock>
-          </InsightGrid>
-        </InsightPanel>
+          })}
+        </IdeasList>
       )}
     </Container>
   );

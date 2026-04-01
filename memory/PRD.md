@@ -83,11 +83,12 @@
   - IdeaChart height 400px for symmetry with left panel
   - Both panels balanced in height
 
-## Testing Status (iteration_21)
+## Testing Status (iteration_22)
 - ✅ Backend: 100%
-- ✅ Frontend: 100%
-- ✅ Chart Overlay: 100%
-- ✅ **Semantic Storytelling: 100%**
+- ✅ Frontend: 90%
+- ✅ Pattern Rendering: 90%
+- ✅ Real Boundaries: 100%
+- ⚠️ Anchor Points: 0% (API compatibility issue, non-blocking)
 
 ## Prioritized Backlog
 
@@ -97,16 +98,18 @@
 - ✅ Ideas mode layout fixes (Graph-First UI)
 - ✅ Light Theme
 - ✅ Coordinate Binding Fix
-- ✅ **SEMANTIC STORYTELLING CHART** (April 1, 2026)
-  - **Головна мета**: Користувач розуміє графік за 2 секунди
-  - **V1 Zone**: Сіра зона для періоду минулої ідеї
-  - **V1 Pattern**: Сірий dashed — чітко видно що це "минуле"
-  - **TRANSITION**: Синій badge "rectangle → triangle" — ЦЕНТР UX
-  - **V2 Pattern**: ОДИН КОЛІР (amber) — не red/green confusion!
-  - **Projection**: Окрема фіолетова dashed стрілка (не змішано з патерном)
-  - **Result**: WIN/LOSS маркер
-  - **Mini Legend**: Пояснює що є що
-  - **Семантична мова**: Графік = VISUAL STORY OF DECISIONS
+- ✅ Semantic Storytelling Chart
+- ✅ **REAL PATTERN RENDERER** (April 1, 2026)
+  - **Головний фікс**: Використано той самий `renderPattern` що і в TA/Research
+  - **Реальні boundaries**: Лінії побудовані від swing points з coordinates
+  - **V1 Rectangle**: Сірі горизонтальні лінії support/resistance
+  - **V2 Triangle**: Помаранчеві збіжні лінії (converging trendlines)
+  - **Свічки торкаються ліній**: Геометрія не "у повітрі"
+  - **Архітектура**: pattern = результат логіки → visualization = відображення
+
+### P1 (To Do)
+- [ ] Anchor points markers (setMarkers API compatibility)
+- [ ] Keyboard shortcuts
 
 ### P1 (Completed - March 31, 2026)
 - ✅ **WebSocket for real-time chart updates** - `/api/ws/market` endpoint with ConnectionManager

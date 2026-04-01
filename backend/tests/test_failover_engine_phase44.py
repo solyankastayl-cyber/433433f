@@ -21,7 +21,7 @@ from datetime import datetime
 # Get base URL from environment - use public URL for testing
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
 if not BASE_URL:
-    BASE_URL = "https://trading-journal-109.preview.emergentagent.com"
+    BASE_URL = "https://ta-engine-text.preview.emergentagent.com"
 
 
 class TestFailoverHealth:

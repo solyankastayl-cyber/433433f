@@ -9,7 +9,7 @@ Tests all new realtime endpoints including:
 - /api/ta/realtime/* (backward compatible)
 - Phase 1 regression tests
 
-Base URL: https://trading-journal-109.preview.emergentagent.com
+Base URL: https://ta-engine-text.preview.emergentagent.com
 """
 
 import pytest
@@ -17,7 +17,7 @@ import requests
 import time
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://trading-journal-109.preview.emergentagent.com').rstrip('/')
+BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://ta-engine-text.preview.emergentagent.com').rstrip('/')
 
 
 class TestRealtimeHealth:

@@ -87,7 +87,7 @@ class TelegramSender {
     msg += `*Data:* ${p.dataMode}\n`;
     
     if (p.snapshotId) {
-      msg += `\n🔗 [View snapshot](https://trading-journal-109.preview.emergentagent.com/snapshot/${p.snapshotId})`;
+      msg += `\n🔗 [View snapshot](https://ta-engine-text.preview.emergentagent.com/snapshot/${p.snapshotId})`;
     }
     
     return msg;

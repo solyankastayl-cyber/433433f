@@ -19,7 +19,7 @@ from typing import Dict, List, Optional
 
 
 class TACryptoAPITester:
-    def __init__(self, base_url: str = "https://trading-journal-109.preview.emergentagent.com"):
+    def __init__(self, base_url: str = "https://ta-engine-text.preview.emergentagent.com"):
         self.base_url = base_url
         self.tests_run = 0
         self.tests_passed = 0

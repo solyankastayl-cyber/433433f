@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 # Base URL for testing
-BASE_URL = "https://trading-journal-109.preview.emergentagent.com"
+BASE_URL = "https://ta-engine-text.preview.emergentagent.com"
 
 
 class MarketMechanicsAPITester:
