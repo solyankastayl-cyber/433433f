@@ -83,11 +83,10 @@
   - IdeaChart height 400px for symmetry with left panel
   - Both panels balanced in height
 
-## Testing Status (iteration_19)
+## Testing Status (iteration_20)
+- ✅ Backend: 100%
 - ✅ Frontend: 100%
-- ✅ Evolution Features: 100%
-- ✅ Light Theme: 100%
-- ✅ Overlay Functionality: 100%
+- ✅ **CRITICAL Overlay Coordinate Binding: 100%**
 - ✅ User Interactions: 100%
 
 ## Prioritized Backlog
@@ -98,25 +97,15 @@
 - ✅ Underscore formatting fixes
 - ✅ Ideas mode layout fixes
 - ✅ **IDEAS MODE REFACTOR - Graph-First UI** (March 31, 2026)
-  - Видалена ліва колонка
-  - Додано горизонтальний Idea Selector Strip зверху
-  - Графік на повну ширину (центр)
-  - Єдина нижня Insight Panel з 6 секціями
-  - Chart Mode Toggle (Idea/Performance)
 - ✅ **LIGHT THEME + OVERLAY SYNC** (April 1, 2026)
-  - Повернено світлу тему
-  - Overlay синхронізований з графіком
 - ✅ **EVOLUTION-FOCUSED CHART** (April 1, 2026)
-  - Canvas-based overlay для швидкості та точності
-  - **Time Separation**: Сірі свічки (минуле) vs Кольорові свічки (поточне)
-  - **Version Boundaries**: V1→V2 пунктирні вертикальні лінії
-  - **Ghost Patterns**: V1 (dashed, opacity 0.35) → Active V2 (solid, opacity 1)
-  - **Confidence Evolution**: 62%→78%↑ лінія вгорі графіка
-  - **Connection**: Точки з'єднують версії
-  - **Expected Path**: Фіолетова стрілка прогнозу
-  - **Result Marker**: ✓ WIN / ✗ LOSS маркер
-  - **IDEA HUD**: BTC·4H, V2-Triangle, 78%↑, WIN
-  - Графік тепер **розповідає історію** еволюції мислення
+- ✅ **COORDINATE BINDING FIX** (April 1, 2026)
+  - **КРИТИЧНИЙ ФІХ**: Overlay тепер ЖИВЕ в координатах графіка
+  - Коли свічки рухаються (pan/zoom), overlay рухається РАЗОМ з ними
+  - Використано `requestAnimationFrame` для плавних оновлень
+  - Підписка на ВСІ події: timeScale changes, crosshair move, resize
+  - Всі координати через `timeToCoordinate()` / `priceToCoordinate()`
+  - Version boundaries, patterns, expected path, price labels — все синхронізовано
 
 ### P1 (Completed - March 31, 2026)
 - ✅ **WebSocket for real-time chart updates** - `/api/ws/market` endpoint with ConnectionManager
