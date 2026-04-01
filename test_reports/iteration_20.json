@@ -1,0 +1,38 @@
+{
+  "summary": "Successfully tested CRITICAL coordinate binding fix for Ideas chart overlay - all overlay elements now move WITH candles during pan/zoom operations",
+  "backend_issues": {},
+  "frontend_issues": {},
+  "passed_tests": [
+    "✅ CRITICAL: Overlay moves WITH candles when dragging/panning chart - CONFIRMED WORKING",
+    "✅ Ideas View loads correctly with BTC, ETH, SOL ideas displayed",
+    "✅ V1 Pattern (Rectangle) visible as ghost pattern with V1 badge",
+    "✅ V2 Pattern (Triangle) visible as active pattern with V2 badge and solid styling",
+    "✅ Version boundary line with V2 START badge visible on chart overlay",
+    "✅ Connection curve between V1 and V2 patterns showing evolution (Rectangle → Triangle)",
+    "✅ Expected path (green support/resistance lines) moves correctly with chart",
+    "✅ Price labels (R/S) move with chart and stay aligned with price levels",
+    "✅ HUD displays correctly (BTC·4H, V2 triangle, 78%, WIN) in canvas overlay",
+    "✅ Zooming chart updates overlay positions correctly - overlay scales with zoom",
+    "✅ Switching between ideas (BTC→ETH) updates overlay correctly with new patterns",
+    "✅ Replay functionality working with 'Replaying evolution...' indicator",
+    "✅ Version switching (V1/V2) working in timeline with pattern changes",
+    "✅ Chart mode toggle between Idea and Performance modes working",
+    "✅ Performance mode badge displays correctly",
+    "✅ All 6 insight blocks present: Evolution, Probability, Key Levels, What Next, Result, Version Timeline",
+    "✅ Filter functionality working (All, Active, Win, Loss)",
+    "✅ Multiple pattern types tested: Rectangle→Triangle (BTC), Ascending Triangle (ETH), Head&Shoulders (SOL)",
+    "✅ Coordinate binding fix using requestAnimationFrame and chart event subscriptions working perfectly"
+  ],
+  "test_report_links": ["/app/backend_test.py"],
+  "action_item_for_main_agent": "",
+  "updated_files": ["/app/backend_test.py"],
+  "success_percentage": {
+    "backend": "100%",
+    "frontend": "100%",
+    "overlay_coordinate_binding": "100%",
+    "critical_functionality": "100%",
+    "user_interactions": "100%"
+  },
+  "should_call_test_agent_after_fix": "false",
+  "should_main_agent_test_itself": "false"
+}

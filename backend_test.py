@@ -18,7 +18,7 @@ import requests
 from datetime import datetime
 
 class TAEngineAPITester:
-    def __init__(self, base_url="https://task-completion-47.preview.emergentagent.com"):
+    def __init__(self, base_url="https://repo-learn-1.preview.emergentagent.com"):
         self.base_url = base_url
         self.ws_url = base_url.replace('https://', 'wss://').replace('http://', 'ws://') + '/api/ws/market'
         self.tests_run = 0
