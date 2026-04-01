@@ -171,9 +171,9 @@ const MAIN_TABS = [
   { id: 'signals', label: 'Signals', icon: Activity, description: 'Indicators & brain' },
   { id: 'execution', label: 'Execution', icon: Activity, description: 'Trade action' },
   { id: 'deep', label: 'Deep', icon: Brain, description: 'Raw details' },
+  { id: 'ideas', label: 'Ideas', icon: Bookmark, description: 'Saved ideas' },
   // Separator
   { id: 'hypotheses', label: 'Hypotheses', icon: Brain, description: 'Test ideas' },
-  { id: 'ideas', label: 'Ideas', icon: Bookmark, description: 'Saved ideas' }
 ];
 
 // ============================================
@@ -212,8 +212,8 @@ const TechAnalysisInner = () => {
   }, [symbol, timeframe, savingIdea]);
 
   // Split tabs into main analysis modes and other
-  const analysisTabs = MAIN_TABS.slice(0, 5); // research, structure, signals, execution, deep
-  const otherTabs = MAIN_TABS.slice(5); // hypotheses, ideas
+  const analysisTabs = MAIN_TABS.slice(0, 6); // research, structure, signals, execution, deep, ideas
+  const otherTabs = MAIN_TABS.slice(6); // hypotheses
 
   return (
     <PageContainer data-testid="tech-analysis-module">
@@ -277,9 +277,11 @@ const TechAnalysisInner = () => {
           <ResearchView activeMode={activeTab} />
         )}
         
-        {/* Hypotheses and Ideas — separate views */}
-        {activeTab === 'hypotheses' && <HypothesesView />}
+        {/* Ideas — text-only evolution tracker */}
         {activeTab === 'ideas' && <IdeasView />}
+        
+        {/* Hypotheses — separate view */}
+        {activeTab === 'hypotheses' && <HypothesesView />}
       </MainContent>
       
       {/* Toast notification */}

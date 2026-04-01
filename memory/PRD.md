@@ -124,7 +124,15 @@
 - [ ] Additional pattern types
 - [ ] Push notifications for idea status changes
 
+### April 1, 2026 - Ideas Mode: Chart Removal & Text-Only UI
+- **REMOVED chart entirely** from Ideas tab (user pivot — canvas overlay approach was fundamentally flawed)
+- **Built text-only IdeasView** with evolution timeline (V1 → V2), pattern tracking, probabilities, key levels, scores
+- **Deleted dead code**: `IdeaChart.jsx`, `IdeaChartOverlay.jsx`
+- **Fixed tab order**: Research → Structure → Signals → Execution → Deep → Ideas | Hypotheses (separator between Ideas and Hypotheses)
+- **Mock data**: 3 ideas (BTC rectangle→triangle, ETH ascending triangle, SOL head&shoulders→double top)
+
 ## Next Tasks
-1. Monitor user feedback on Ideas mode layout
+1. Monitor user feedback on Ideas text-only layout
 2. Consider implementing P1 items based on user needs
-3. WebSocket integration for live updates
+3. Anchor points markers (setMarkers API compatibility)
+4. Keyboard shortcuts for timeframe switching
