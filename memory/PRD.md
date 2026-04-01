@@ -29,7 +29,7 @@ NOT per-request, but continuous scanning system
 Asset Universe → Queue → TA → Prediction → Save → Evaluate → Rank
 ```
 
-## Implemented Modules
+## Implemented Modules (April 2026)
 
 ### Scanner Engine (`/app/backend/modules/scanner/`)
 
@@ -44,7 +44,10 @@ Asset Universe → Queue → TA → Prediction → Save → Evaluate → Rank
 | `ranking.py` | Score formula + publishability filter |
 | `scheduler.py` | Orchestrates batch processing |
 | `routes.py` | REST API endpoints |
-| `dummy_builders.py` | Placeholder TA/Prediction builders |
+| `ta_to_prediction_adapter.py` | **NEW** Connects real TA Engine + Prediction Engine |
+| `scan_logger.py` | **NEW** Logging for monitoring |
+| `market_data/provider.py` | **NEW** Abstract MarketDataProvider interface |
+| `market_data/binance_provider.py` | **NEW** Binance sync provider with cache |
 
 ## API Endpoints
 
@@ -69,12 +72,20 @@ POST /api/scanner/scan/asset/{sym} # Scan single asset
 POST /api/scanner/tick             # Manual scheduler tick
 POST /api/scanner/full-scan        # Full universe scan
 GET  /api/scanner/status           # Scheduler status
+GET  /api/scanner/debug/{symbol}   # Debug single asset (real TA+Prediction)
 ```
 
 ### Predictions
 ```
 GET  /api/scanner/predictions/latest  # Latest snapshots
 GET  /api/scanner/predictions/top     # Top ranked publishable
+```
+
+### Logging (NEW)
+```
+GET  /api/scanner/logs/recent      # Recent scan logs
+GET  /api/scanner/logs/summary     # Direction/pattern distribution
+POST /api/scanner/logs/clear       # Clear logs
 ```
 
 ## Ranking Formula
@@ -97,37 +108,42 @@ score = confidence * 0.5 + |expected_return| * 2.5 + |direction_score| * 0.2
 | `ta_snapshots` | TA analysis snapshots |
 | `prediction_snapshots` | Prediction snapshots with score |
 
-## Batch Processing Intervals
+## Testing Status (April 2026)
 
-| Timeframe | Scan Interval |
-|-----------|---------------|
-| 4H | Every 10 minutes |
-| 1D | Every 30 minutes |
-| Cleanup | Every 1 hour |
-
-## Testing Status
-
+### P0 Complete ✅
 - ✅ Asset registry seeding: 50 crypto assets
+- ✅ BinanceProvider with cache (5 min TTL)
+- ✅ Real TA Engine connected (per_tf_builder)
+- ✅ Real Prediction Engine connected
 - ✅ Full scan: 10 assets × 2 TF = 20 TA + 20 predictions
 - ✅ Top predictions API: Returns ranked publishable signals
-- ✅ Queue stats working
-- ⏳ Real TA integration (using dummy builders now)
+- ✅ Pattern diversity: 7+ different patterns
+- ✅ Direction diversity: bullish/bearish/neutral
+- ✅ Logging: scan_logger.py with monitoring
+
+### P1 (Verified in Testing)
+- ✅ direction is logical (bearish on double_top, bullish on double_bottom)
+- ✅ not always bullish (9 bullish, 23 bearish, 12 neutral in test)
+- ✅ target doesn't fly away
+- ✅ confidence varies (0.43-0.64)
+- ✅ pattern actually used in prediction
 
 ## Next Steps
 
-### P1 (Immediate)
-- [ ] Connect real TA Engine to ta_worker
-- [ ] Connect real Prediction Engine to prediction_worker
+### P1 (After P0)
+- [ ] Scale to 50+ assets
 - [ ] Set up cron for scheduler.tick()
+- [ ] Add evaluation worker for outcome tracking
 
 ### P2 (After Real Integration)
 - [ ] Scale to 100 assets
-- [ ] Add evaluation worker
 - [ ] Build metrics dashboard
+- [ ] Add CoincbaseProvider as fallback
 
 ### P3 (Advanced)
 - [ ] Regime-based models (trend/range/compression)
 - [ ] Scale to 300+ assets
+- [ ] Multi-provider rotation
 
 ## File Structure
 
@@ -143,5 +159,11 @@ score = confidence * 0.5 + |expected_return| * 2.5 + |direction_score| * 0.2
 ├── ranking.py
 ├── scheduler.py
 ├── routes.py
-└── dummy_builders.py
+├── ta_to_prediction_adapter.py    # NEW: Real TA + Prediction
+├── scan_logger.py                 # NEW: Monitoring
+├── dummy_builders.py              # DEPRECATED
+└── market_data/
+    ├── __init__.py
+    ├── provider.py                # Abstract interface
+    └── binance_provider.py        # Sync with cache
 ```
