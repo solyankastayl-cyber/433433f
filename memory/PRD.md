@@ -83,10 +83,12 @@
   - IdeaChart height 400px for symmetry with left panel
   - Both panels balanced in height
 
-## Testing Status (iteration_18)
+## Testing Status (iteration_19)
 - ✅ Frontend: 100%
+- ✅ Evolution Features: 100%
 - ✅ Light Theme: 100%
-- ✅ Overlay Synchronization: 100%
+- ✅ Overlay Functionality: 100%
+- ✅ User Interactions: 100%
 
 ## Prioritized Backlog
 
@@ -99,18 +101,22 @@
   - Видалена ліва колонка
   - Додано горизонтальний Idea Selector Strip зверху
   - Графік на повну ширину (центр)
-  - Єдина нижня Insight Panel з 6 секціями:
-    - Evolution (pattern → pattern)
-    - Probability (AI Breakout/Breakdown)
-    - Key Levels (Breakout/Invalidation)
-    - What Next (рекомендації)
-    - Result/Score (+1/-1)
-    - Version Timeline (V1/V2/Replay)
+  - Єдина нижня Insight Panel з 6 секціями
   - Chart Mode Toggle (Idea/Performance)
 - ✅ **LIGHT THEME + OVERLAY SYNC** (April 1, 2026)
-  - Повернено світлу тему (білий фон #ffffff, сірі акценти #f8fafc)
-  - Overlay (трикутник) синхронізований з графіком - рухається разом при pan/zoom
-  - Додано subscribeVisibleTimeRangeChange для перемальовування overlay
+  - Повернено світлу тему
+  - Overlay синхронізований з графіком
+- ✅ **EVOLUTION-FOCUSED CHART** (April 1, 2026)
+  - Canvas-based overlay для швидкості та точності
+  - **Time Separation**: Сірі свічки (минуле) vs Кольорові свічки (поточне)
+  - **Version Boundaries**: V1→V2 пунктирні вертикальні лінії
+  - **Ghost Patterns**: V1 (dashed, opacity 0.35) → Active V2 (solid, opacity 1)
+  - **Confidence Evolution**: 62%→78%↑ лінія вгорі графіка
+  - **Connection**: Точки з'єднують версії
+  - **Expected Path**: Фіолетова стрілка прогнозу
+  - **Result Marker**: ✓ WIN / ✗ LOSS маркер
+  - **IDEA HUD**: BTC·4H, V2-Triangle, 78%↑, WIN
+  - Графік тепер **розповідає історію** еволюції мислення
 
 ### P1 (Completed - March 31, 2026)
 - ✅ **WebSocket for real-time chart updates** - `/api/ws/market` endpoint with ConnectionManager
