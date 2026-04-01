@@ -53,7 +53,7 @@ const fadeIn = keyframes`
 `;
 
 // ============================================
-// NEW LAYOUT — GRAPH-FIRST
+// NEW LAYOUT — GRAPH-FIRST (LIGHT THEME)
 // ============================================
 
 const Container = styled.div`
@@ -62,7 +62,7 @@ const Container = styled.div`
   gap: 0;
   padding: 0;
   min-height: calc(100vh - 140px);
-  background: #0B0F14;
+  background: #f8fafc;
 `;
 
 // Idea Selector Strip (replaces left column)
@@ -71,12 +71,12 @@ const SelectorStrip = styled.div`
   align-items: center;
   gap: 12px;
   padding: 12px 20px;
-  background: #0B0F14;
-  border-bottom: 1px solid #1e293b;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
   overflow-x: auto;
   
   &::-webkit-scrollbar { height: 4px; }
-  &::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
   
   @media (max-width: 768px) {
     padding: 10px 12px;
@@ -89,7 +89,7 @@ const StripControls = styled.div`
   align-items: center;
   gap: 8px;
   padding-right: 12px;
-  border-right: 1px solid #1e293b;
+  border-right: 1px solid #e2e8f0;
   flex-shrink: 0;
 `;
 
@@ -99,9 +99,9 @@ const FilterBtn = styled.button`
   gap: 4px;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#334155'};
-  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
-  color: ${({ $active }) => $active ? '#60a5fa' : '#94a3b8'};
+  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
+  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.08)' : '#ffffff'};
+  color: ${({ $active }) => $active ? '#3b82f6' : '#64748b'};
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
@@ -111,7 +111,7 @@ const FilterBtn = styled.button`
   
   &:hover {
     border-color: #3b82f6;
-    color: #60a5fa;
+    color: #3b82f6;
   }
 `;
 
@@ -122,27 +122,27 @@ const RefreshBtn = styled.button`
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  border: 1px solid #334155;
-  background: transparent;
-  color: #94a3b8;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #64748b;
   cursor: pointer;
   transition: all 0.15s;
   
   svg { width: 14px; height: 14px; }
   
-  &:hover { border-color: #3b82f6; color: #60a5fa; }
+  &:hover { border-color: #3b82f6; color: #3b82f6; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
-// Idea Card (Horizontal Chip)
+// Idea Card (Horizontal Chip) — LIGHT THEME
 const IdeaChip = styled.div`
   display: flex;
   flex-direction: column;
   min-width: 220px;
   max-width: 260px;
   padding: 10px 14px;
-  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.12)' : '#111827'};
-  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#1e293b'};
+  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.06)' : '#ffffff'};
+  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -150,13 +150,14 @@ const IdeaChip = styled.div`
   animation: ${fadeIn} 0.3s ease;
   
   ${({ $active }) => $active && css`
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
   `}
   
   &:hover {
     border-color: #3b82f6;
-    background: rgba(59, 130, 246, 0.08);
+    background: rgba(59, 130, 246, 0.04);
     transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
   }
 `;
 
@@ -175,15 +176,15 @@ const ChipAsset = styled.div`
   .symbol { 
     font-size: 14px; 
     font-weight: 700; 
-    color: #f1f5f9; 
+    color: #1e293b; 
   }
   .timeframe {
     font-size: 10px;
     font-weight: 600;
     padding: 2px 5px;
-    background: rgba(148, 163, 184, 0.15);
+    background: rgba(100, 116, 139, 0.1);
     border-radius: 4px;
-    color: #94a3b8;
+    color: #64748b;
   }
 `;
 
@@ -200,22 +201,22 @@ const ResultBadge = styled.span`
   
   ${({ $type }) => {
     switch ($type) {
-      case 'correct': return `background: rgba(34, 197, 94, 0.15); color: #4ade80;`;
-      case 'wrong': return `background: rgba(239, 68, 68, 0.15); color: #f87171;`;
-      case 'active': return `background: rgba(59, 130, 246, 0.15); color: #60a5fa;`;
-      default: return `background: rgba(148, 163, 184, 0.15); color: #94a3b8;`;
+      case 'correct': return `background: rgba(34, 197, 94, 0.12); color: #16a34a;`;
+      case 'wrong': return `background: rgba(239, 68, 68, 0.12); color: #dc2626;`;
+      case 'active': return `background: rgba(59, 130, 246, 0.12); color: #2563eb;`;
+      default: return `background: rgba(100, 116, 139, 0.1); color: #64748b;`;
     }
   }}
 `;
 
 const ChipEvolution = styled.div`
   font-size: 12px;
-  color: #cbd5e1;
+  color: #475569;
   margin-bottom: 4px;
   
-  .ghost { color: #475569; text-decoration: line-through; }
+  .ghost { color: #94a3b8; text-decoration: line-through; }
   .arrow { color: #3b82f6; margin: 0 4px; }
-  .current { text-transform: capitalize; font-weight: 500; }
+  .current { text-transform: capitalize; font-weight: 500; color: #334155; }
 `;
 
 const ChipMeta = styled.div`
@@ -229,24 +230,24 @@ const ChipMeta = styled.div`
     display: flex;
     align-items: center;
     gap: 3px;
-    &.up { color: #4ade80; }
-    &.down { color: #f87171; }
+    &.up { color: #16a34a; }
+    &.down { color: #dc2626; }
     svg { width: 10px; height: 10px; }
   }
   
   .score {
     font-weight: 600;
-    &.positive { color: #4ade80; }
-    &.negative { color: #f87171; }
+    &.positive { color: #16a34a; }
+    &.negative { color: #dc2626; }
   }
 `;
 
-// Graph Section (Full Width)
+// Graph Section (Full Width) — LIGHT THEME
 const GraphSection = styled.div`
   position: relative;
   width: 100%;
   padding: 16px 20px;
-  background: #0B0F14;
+  background: #f8fafc;
   animation: ${fadeIn} 0.3s ease;
   
   @media (max-width: 768px) {
@@ -256,21 +257,22 @@ const GraphSection = styled.div`
 
 const GraphCard = styled.div`
   position: relative;
-  background: #111827;
-  border-radius: 16px;
-  border: 1px solid #1e293b;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
   overflow: hidden;
   min-height: 480px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
   
   @media (max-width: 768px) {
     min-height: 360px;
   }
 `;
 
-// Bottom Insight Panel (Full Width)
+// Bottom Insight Panel (Full Width) — LIGHT THEME
 const InsightPanel = styled.div`
-  background: #111827;
-  border-top: 1px solid #1e293b;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
   padding: 20px 24px;
   animation: ${fadeIn} 0.4s ease;
   
@@ -294,15 +296,15 @@ const InsightTitle = styled.div`
   .symbol { 
     font-size: 20px; 
     font-weight: 700; 
-    color: #f1f5f9; 
+    color: #1e293b; 
   }
   .timeframe {
     font-size: 11px;
     font-weight: 600;
     padding: 3px 8px;
-    background: rgba(148, 163, 184, 0.12);
+    background: rgba(100, 116, 139, 0.1);
     border-radius: 6px;
-    color: #94a3b8;
+    color: #64748b;
   }
 `;
 
@@ -318,9 +320,9 @@ const ActionBtn = styled.button`
   gap: 5px;
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid ${({ $primary }) => $primary ? '#3b82f6' : '#334155'};
-  background: ${({ $primary }) => $primary ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
-  color: ${({ $primary }) => $primary ? '#60a5fa' : '#94a3b8'};
+  border: 1px solid ${({ $primary }) => $primary ? '#3b82f6' : '#e2e8f0'};
+  background: ${({ $primary }) => $primary ? 'rgba(59, 130, 246, 0.08)' : '#ffffff'};
+  color: ${({ $primary }) => $primary ? '#3b82f6' : '#64748b'};
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -330,8 +332,8 @@ const ActionBtn = styled.button`
   
   &:hover:not(:disabled) {
     border-color: #3b82f6;
-    color: #60a5fa;
-    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.06);
   }
   
   &:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -354,9 +356,9 @@ const InsightGrid = styled.div`
 
 const InsightBlock = styled.div`
   padding: 16px;
-  background: rgba(15, 23, 42, 0.6);
+  background: #f8fafc;
   border-radius: 12px;
-  border: 1px solid #1e293b;
+  border: 1px solid #e2e8f0;
   
   .label {
     font-size: 10px;
@@ -379,7 +381,7 @@ const EvolutionContent = styled.div`
     .pattern { 
       font-size: 16px; 
       font-weight: 600; 
-      color: #f1f5f9;
+      color: #1e293b;
       text-transform: capitalize;
     }
     .arrow { color: #3b82f6; svg { width: 16px; height: 16px; } }
@@ -395,11 +397,11 @@ const ProbContent = styled.div`
     align-items: center;
     justify-content: space-between;
     padding: 6px 0;
-    border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+    border-bottom: 1px solid #e2e8f0;
     &:last-child { border-bottom: none; }
   }
   
-  .label { font-size: 12px; color: #94a3b8; }
+  .label { font-size: 12px; color: #64748b; }
   
   .value {
     display: flex;
@@ -408,8 +410,8 @@ const ProbContent = styled.div`
     font-size: 14px;
     font-weight: 600;
     
-    &.up { color: #4ade80; }
-    &.down { color: #f87171; }
+    &.up { color: #16a34a; }
+    &.down { color: #dc2626; }
     
     svg { width: 14px; height: 14px; }
     
@@ -417,8 +419,8 @@ const ProbContent = styled.div`
       font-size: 10px;
       padding: 2px 5px;
       border-radius: 4px;
-      &.positive { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
-      &.negative { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+      &.positive { background: rgba(34, 197, 94, 0.1); color: #16a34a; }
+      &.negative { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
     }
   }
 `;
@@ -430,20 +432,20 @@ const LevelsContent = styled.div`
     align-items: center;
     justify-content: space-between;
     padding: 8px 0;
-    border-bottom: 1px solid rgba(30, 41, 59, 0.5);
+    border-bottom: 1px solid #e2e8f0;
     &:last-child { border-bottom: none; }
     
     .label { 
       font-size: 11px; 
       font-weight: 500;
-      &.breakout { color: #4ade80; }
-      &.invalidation { color: #f87171; }
-      &.target { color: #60a5fa; }
+      &.breakout { color: #16a34a; }
+      &.invalidation { color: #dc2626; }
+      &.target { color: #2563eb; }
     }
     .price { 
       font-size: 16px; 
       font-weight: 700; 
-      color: #f1f5f9;
+      color: #1e293b;
     }
   }
 `;
@@ -452,7 +454,7 @@ const LevelsContent = styled.div`
 const WhatNextContent = styled.div`
   .text {
     font-size: 14px;
-    color: #60a5fa;
+    color: #2563eb;
     font-weight: 500;
     line-height: 1.5;
     
@@ -476,7 +478,7 @@ const ScoreContent = styled.div`
     .result { 
       font-size: 14px; 
       font-weight: 600; 
-      color: ${({ $positive }) => $positive ? '#4ade80' : $positive === false ? '#f87171' : '#94a3b8'};
+      color: ${({ $positive }) => $positive ? '#16a34a' : $positive === false ? '#dc2626' : '#64748b'};
       margin-bottom: 4px;
     }
     .impact { font-size: 11px; color: #64748b; }
@@ -485,7 +487,7 @@ const ScoreContent = styled.div`
   .score {
     font-size: 28px;
     font-weight: 700;
-    color: ${({ $positive }) => $positive ? '#4ade80' : $positive === false ? '#f87171' : '#94a3b8'};
+    color: ${({ $positive }) => $positive ? '#16a34a' : $positive === false ? '#dc2626' : '#64748b'};
   }
 `;
 
@@ -511,9 +513,9 @@ const VersionBtn = styled.button`
   align-items: center;
   padding: 8px 14px;
   border-radius: 8px;
-  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#334155'};
-  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
-  color: ${({ $active }) => $active ? '#60a5fa' : '#94a3b8'};
+  border: 1px solid ${({ $active }) => $active ? '#3b82f6' : '#e2e8f0'};
+  background: ${({ $active }) => $active ? 'rgba(59, 130, 246, 0.08)' : '#ffffff'};
+  color: ${({ $active }) => $active ? '#3b82f6' : '#64748b'};
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -523,7 +525,7 @@ const VersionBtn = styled.button`
   .version { margin-bottom: 2px; }
   .date { font-size: 9px; font-weight: 400; opacity: 0.7; }
   
-  &:hover { border-color: #3b82f6; color: #60a5fa; }
+  &:hover { border-color: #3b82f6; color: #3b82f6; }
 `;
 
 // Empty States
@@ -535,8 +537,8 @@ const EmptyState = styled.div`
   padding: 60px 24px;
   text-align: center;
   
-  svg { width: 56px; height: 56px; color: #334155; margin-bottom: 16px; }
-  h4 { font-size: 16px; font-weight: 600; color: #f1f5f9; margin: 0 0 6px 0; }
+  svg { width: 56px; height: 56px; color: #cbd5e1; margin-bottom: 16px; }
+  h4 { font-size: 16px; font-weight: 600; color: #1e293b; margin: 0 0 6px 0; }
   p { font-size: 13px; color: #64748b; margin: 0; }
 `;
 
@@ -563,9 +565,9 @@ const ChartModeToggle = styled.div`
 const ModeBtn = styled.button`
   padding: 6px 12px;
   border-radius: 8px;
-  border: 1px solid ${({ $active, $color }) => $active ? ($color || '#3b82f6') : '#334155'};
-  background: ${({ $active, $color }) => $active ? `${$color || '#3b82f6'}20` : 'rgba(17, 24, 39, 0.9)'};
-  color: ${({ $active, $color }) => $active ? ($color || '#60a5fa') : '#94a3b8'};
+  border: 1px solid ${({ $active, $color }) => $active ? ($color || '#3b82f6') : '#e2e8f0'};
+  background: ${({ $active, $color }) => $active ? `${$color || '#3b82f6'}15` : 'rgba(255, 255, 255, 0.95)'};
+  color: ${({ $active, $color }) => $active ? ($color || '#3b82f6') : '#64748b'};
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
@@ -574,7 +576,7 @@ const ModeBtn = styled.button`
   
   &:hover {
     border-color: ${({ $color }) => $color || '#3b82f6'};
-    color: ${({ $color }) => $color || '#60a5fa'};
+    color: ${({ $color }) => $color || '#3b82f6'};
   }
 `;
 

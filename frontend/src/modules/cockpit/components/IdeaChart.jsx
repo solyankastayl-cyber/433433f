@@ -3,13 +3,9 @@
  * =========================================================
  * 
  * Shows candle background + IdeaChartOverlay on top.
- * When no real candle data available, generates mock candles
- * that match the idea's price range.
+ * Overlay is SYNCED with chart — moves together with pan/zoom.
  * 
- * Props:
- * - idea: selected idea object
- * - activeVersionIndex: which version is currently active
- * - isReplaying: whether replay animation is active
+ * LIGHT THEME VERSION
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
@@ -20,9 +16,9 @@ import IdeaChartOverlay from './IdeaChartOverlay';
 const ChartWrapper = styled.div`
   position: relative;
   width: 100%;
-  background: #0B0F14;
-  border-radius: 16px;
-  border: 1px solid #1e293b;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
   overflow: hidden;
 `;
 
@@ -33,77 +29,77 @@ const ChartContainer = styled.div`
 
 const ChartModeBadge = styled.div`
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: 14px;
+  left: 14px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
-  background: rgba(59, 130, 246, 0.2);
-  backdrop-filter: blur(8px);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  border-radius: 10px;
-  font-size: 12px;
+  padding: 6px 12px;
+  background: rgba(59, 130, 246, 0.95);
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 11px;
   font-weight: 700;
   z-index: 20;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
   pointer-events: none;
 `;
 
 const VersionBadge = styled.div`
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: 14px;
+  right: 14px;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
-  background: rgba(17, 24, 39, 0.9);
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
-  border: 1px solid #334155;
-  color: #f1f5f9;
-  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
   z-index: 20;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   pointer-events: none;
   
   .pattern {
     text-transform: capitalize;
-    color: #60a5fa;
+    color: #3b82f6;
   }
   
   .confidence {
     color: ${({ $confidence }) => 
-      $confidence >= 0.7 ? '#4ade80' : 
-      $confidence >= 0.5 ? '#fbbf24' : '#94a3b8'};
+      $confidence >= 0.7 ? '#16a34a' : 
+      $confidence >= 0.5 ? '#d97706' : '#64748b'};
+    font-weight: 700;
   }
 `;
 
 const ReplayIndicator = styled.div`
   position: absolute;
-  bottom: 16px;
+  bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  background: rgba(59, 130, 246, 0.2);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  color: #60a5fa;
-  border-radius: 24px;
+  gap: 8px;
+  padding: 8px 18px;
+  background: rgba(59, 130, 246, 0.95);
+  color: #ffffff;
+  border-radius: 20px;
   font-size: 12px;
   font-weight: 600;
   z-index: 20;
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.3);
   pointer-events: none;
   
   .dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: #60a5fa;
+    background: #ffffff;
     animation: pulse 0.6s ease-in-out infinite;
   }
   
@@ -115,20 +111,19 @@ const ReplayIndicator = styled.div`
 
 const PerformanceBadge = styled.div`
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: 14px;
+  left: 14px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
-  background: rgba(139, 92, 246, 0.2);
-  backdrop-filter: blur(8px);
-  color: #a78bfa;
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  border-radius: 10px;
-  font-size: 12px;
+  padding: 6px 12px;
+  background: rgba(139, 92, 246, 0.95);
+  color: #ffffff;
+  border-radius: 8px;
+  font-size: 11px;
   font-weight: 700;
   z-index: 20;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
   pointer-events: none;
 `;
 
@@ -139,7 +134,6 @@ function buildPerformanceZones(allIdeas, idea) {
   const completed = allIdeas.filter(i => i.status === 'completed');
   if (completed.length === 0) return [];
   
-  // Get all price levels and results
   const entries = [];
   for (const i of completed) {
     const lastV = i.versions?.[i.versions.length - 1];
@@ -151,14 +145,12 @@ function buildPerformanceZones(allIdeas, idea) {
   
   if (entries.length === 0) return [];
   
-  // Determine bucket size based on price range
   const allPrices = entries.flatMap(e => [e.top, e.bottom]);
   const minP = Math.min(...allPrices);
   const maxP = Math.max(...allPrices);
   const range = maxP - minP;
   const bucketSize = range > 1000 ? 1000 : range > 100 ? 50 : range > 10 ? 5 : 1;
   
-  // Build zone buckets
   const zones = {};
   for (const e of entries) {
     const bucket = Math.floor(e.mid / bucketSize) * bucketSize;
@@ -167,12 +159,10 @@ function buildPerformanceZones(allIdeas, idea) {
     else zones[bucket].losses++;
   }
   
-  // Convert to array with stats, limit to 7 zones
-  // Skip zones with less than 3 samples (minimum threshold)
   return Object.entries(zones)
     .map(([price, z]) => {
       const total = z.wins + z.losses;
-      if (total < 3) return null; // minimum threshold = 3 samples
+      if (total < 3) return null;
       return {
         priceFrom: parseFloat(price),
         priceTo: parseFloat(price) + bucketSize,
@@ -184,7 +174,7 @@ function buildPerformanceZones(allIdeas, idea) {
     })
     .filter(Boolean)
     .sort((a, b) => b.samples - a.samples)
-    .slice(0, 7); // max 7 zones
+    .slice(0, 7);
 }
 
 // Performance SVG Overlay
@@ -219,7 +209,6 @@ const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries
       }
     : (time) => width / 2;
   
-  // Result dots from completed ideas
   const resultDots = (allIdeas || [])
     .filter(i => i.status === 'completed' && i.versions?.length)
     .map(i => {
@@ -244,8 +233,6 @@ const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries
         overflow: 'visible',
         zIndex: 50,
       }}
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
     >
       {/* Win/Loss Zones */}
       {zones.map((z, i) => {
@@ -255,7 +242,7 @@ const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries
         
         const isStrong = z.winrate > 0.65;
         const isWeak = z.winrate < 0.4;
-        const color = isStrong ? 'rgba(34,197,94,0.06)' : isWeak ? 'rgba(239,68,68,0.06)' : 'transparent';
+        const color = isStrong ? 'rgba(34,197,94,0.08)' : isWeak ? 'rgba(239,68,68,0.08)' : 'transparent';
         
         if (!isStrong && !isWeak) return null;
         
@@ -266,13 +253,12 @@ const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries
               width={width} height={Math.abs(y2 - y1)}
               fill={color}
             />
-            {/* Label for strong zones */}
             {z.winrate > 0.6 && (
               <text
                 x={width - 60} y={(y1 + y2) / 2 + 4}
                 fill={isStrong ? '#16a34a' : '#dc2626'}
                 fontSize="10" fontWeight="700" fontFamily="Inter, sans-serif"
-                opacity={0.6}
+                opacity={0.7}
               >
                 {Math.round(z.winrate * 100)}%
               </text>
@@ -287,7 +273,7 @@ const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries
           <circle
             cx={d.x ?? width / 2} cy={d.y} r={6}
             fill={d.isWin ? '#22c55e' : '#ef4444'}
-            opacity={0.8}
+            opacity={0.9}
             stroke="#ffffff" strokeWidth={1.5}
           />
         </g>
@@ -300,7 +286,6 @@ const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries
 function generateMockCandles(idea) {
   if (!idea?.versions?.length) return [];
   
-  // Gather all prices and times from versions
   const allLevels = idea.versions.map(v => v.snapshot?.levels).filter(Boolean);
   const allTimes = idea.versions.map(v => v.timestamp).filter(Boolean);
   
@@ -310,15 +295,13 @@ function generateMockCandles(idea) {
   const maxPrice = Math.max(...allLevels.map(l => l.top || l.bottom || 0).filter(Boolean)) * 1.04;
   const priceRange = maxPrice - minPrice;
   
-  const startTime = Math.min(...allTimes) - 86400 * 5; // 5 days before
-  const endTime = Math.max(...allTimes) + 86400 * 5; // 5 days after
+  const startTime = Math.min(...allTimes) - 86400 * 5;
+  const endTime = Math.max(...allTimes) + 86400 * 5;
   
-  // Generate 4H candles
   const interval = 14400; // 4 hours
   const candles = [];
   let prevClose = minPrice + priceRange * 0.4;
   
-  // Simple random walk with mean reversion toward middle
   const midPrice = (minPrice + maxPrice) / 2;
   
   for (let t = startTime; t <= endTime; t += interval) {
@@ -354,17 +337,14 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
   const [priceSeriesInstance, setPriceSeriesInstance] = useState(null);
   const [dimensions, setDimensions] = useState({ width: 800, height });
   
-  // Generate candles for this idea
   const candles = useMemo(() => generateMockCandles(idea), [idea?.idea_id]);
   
-  // Active version info
   const activeVersion = idea?.versions?.[activeVersionIndex ?? (idea?.versions?.length - 1)];
   
   // Create/update chart
   useEffect(() => {
     if (!chartRef.current || candles.length === 0) return;
     
-    // Cleanup previous
     if (chartInstanceRef.current) {
       try { chartInstanceRef.current.remove(); } catch {}
       chartInstanceRef.current = null;
@@ -373,30 +353,31 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     const rect = chartRef.current.getBoundingClientRect();
     const w = rect.width || 800;
     
+    // LIGHT THEME
     const chart = createChart(chartRef.current, {
       width: w,
       height,
       layout: {
-        background: { type: 'solid', color: '#0B0F14' },
-        textColor: '#64748b',
+        background: { type: 'solid', color: '#ffffff' },
+        textColor: '#94a3b8',
         fontFamily: "'Inter', -apple-system, sans-serif",
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: '#1e293b' },
-        horzLines: { color: '#1e293b' },
+        vertLines: { color: '#f1f5f9' },
+        horzLines: { color: '#f1f5f9' },
       },
       crosshair: {
         mode: 1,
-        vertLine: { color: '#475569', style: 2, width: 1 },
-        horzLine: { color: '#475569', style: 2, width: 1 },
+        vertLine: { color: '#cbd5e1', style: 2, width: 1 },
+        horzLine: { color: '#cbd5e1', style: 2, width: 1 },
       },
       rightPriceScale: {
-        borderColor: '#1e293b',
+        borderColor: '#e2e8f0',
         scaleMargins: { top: 0.12, bottom: 0.12 },
       },
       timeScale: {
-        borderColor: '#1e293b',
+        borderColor: '#e2e8f0',
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 20,
@@ -407,20 +388,20 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     setChartInstance(chart);
     setDimensions({ width: w, height });
     
+    // LIGHT THEME CANDLES
     const priceSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#334155',
-      downColor: '#1e293b',
-      borderUpColor: '#475569',
-      borderDownColor: '#334155',
-      wickUpColor: '#475569',
-      wickDownColor: '#334155',
+      upColor: '#e2e8f0',
+      downColor: '#cbd5e1',
+      borderUpColor: '#cbd5e1',
+      borderDownColor: '#94a3b8',
+      wickUpColor: '#cbd5e1',
+      wickDownColor: '#94a3b8',
       lastValueVisible: false,
       priceLineVisible: false,
     });
     
     setPriceSeriesInstance(priceSeries);
     
-    // Deduplicate and sort
     const seen = new Set();
     const mapped = candles
       .filter(c => c.time > 0)
@@ -434,7 +415,6 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     priceSeries.setData(mapped);
     chart.timeScale().fitContent();
     
-    // Resize handler
     const handleResize = () => {
       if (chartRef.current && chart) {
         const newRect = chartRef.current.getBoundingClientRect();
@@ -455,7 +435,6 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     };
   }, [candles, height]);
   
-  // Performance zones (computed once)
   const performanceZones = useMemo(() => 
     chartMode === 'performance' ? buildPerformanceZones(allIdeas, idea) : [],
     [chartMode, allIdeas, idea]

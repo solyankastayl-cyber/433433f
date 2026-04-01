@@ -8,20 +8,19 @@
  * - Result markers (green/red dots at breakout/invalidation point)
  * - Transition animation between versions (CSS)
  * 
- * Coordinate System:
- * - If chart + priceSeries provided → use real lightweight-charts coords
- * - If not → fallback to linear mapping from version data
+ * IMPORTANT: Overlay is SYNCED with chart movement!
+ * Uses useEffect to subscribe to timeScale changes.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 
 // ============================================
-// STYLES
+// STYLES — Light Theme
 // ============================================
 const STYLES = {
   ghost: {
     stroke: '#94a3b8',
-    opacity: 0.15,
+    opacity: 0.18,
     strokeWidth: 1.5,
     strokeDasharray: '8 5',
   },
@@ -58,6 +57,39 @@ const IdeaChartOverlay = ({
   const versions = idea?.versions || [];
   const currentIdx = activeVersionIndex ?? Math.max(versions.length - 1, 0);
   
+  // Force re-render on chart movement
+  const [, forceUpdate] = useState(0);
+  
+  // Subscribe to chart changes for SYNCED overlay
+  useEffect(() => {
+    if (!chart) return;
+    
+    const handleTimeScaleChange = () => {
+      forceUpdate(n => n + 1);
+    };
+    
+    // Subscribe to time scale changes (pan, zoom)
+    const timeScale = chart.timeScale();
+    timeScale.subscribeVisibleTimeRangeChange(handleTimeScaleChange);
+    timeScale.subscribeVisibleLogicalRangeChange(handleTimeScaleChange);
+    
+    // Subscribe to price scale changes
+    const priceScale = chart.priceScale('right');
+    if (priceScale && priceScale.subscribeVisiblePriceRangeChange) {
+      priceScale.subscribeVisiblePriceRangeChange(handleTimeScaleChange);
+    }
+    
+    return () => {
+      try {
+        timeScale.unsubscribeVisibleTimeRangeChange(handleTimeScaleChange);
+        timeScale.unsubscribeVisibleLogicalRangeChange(handleTimeScaleChange);
+        if (priceScale && priceScale.unsubscribeVisiblePriceRangeChange) {
+          priceScale.unsubscribeVisiblePriceRangeChange(handleTimeScaleChange);
+        }
+      } catch {}
+    };
+  }, [chart]);
+  
   // Coordinate system
   const hasChart = chart && priceSeries;
   
@@ -66,61 +98,51 @@ const IdeaChartOverlay = ({
     return t > 9999999999 ? Math.floor(t / 1000) : t;
   };
   
-  // Build coordinate mappers
-  const { toX, toY } = useMemo(() => {
+  // Build coordinate mappers — now recalculates on each render (chart movement)
+  const toX = useCallback((time) => {
     if (hasChart) {
-      return {
-        toX: (time) => {
-          try {
-            const ts = chart.timeScale();
-            const normalized = normalizeTime(time);
-            if (!normalized) return null;
-            const x = ts.timeToCoordinate(normalized);
-            return Number.isFinite(x) ? x : null;
-          } catch { return null; }
-        },
-        toY: (price) => {
-          try {
-            if (price == null) return null;
-            const y = priceSeries.priceToCoordinate(price);
-            return Number.isFinite(y) ? y : null;
-          } catch { return null; }
-        }
-      };
+      try {
+        const ts = chart.timeScale();
+        const normalized = normalizeTime(time);
+        if (!normalized) return null;
+        const x = ts.timeToCoordinate(normalized);
+        return Number.isFinite(x) ? x : null;
+      } catch { return null; }
     }
     
-    if (versions.length === 0) {
-      return {
-        toX: () => width / 2,
-        toY: () => height / 2,
-      };
-    }
+    if (versions.length === 0) return width / 2;
     
     // Fallback: linear mapping
     const allTimes = versions.flatMap(v => 
       [v.timestamp, v.snapshot?.levels?.start_time, v.snapshot?.levels?.end_time].filter(Boolean)
     );
+    const minT = Math.min(...allTimes) - 86400 * 2;
+    const maxT = Math.max(...allTimes) + 86400 * 2;
+    const normalized = normalizeTime(time);
+    if (!normalized) return width / 2;
+    return 40 + ((normalized - minT) / (maxT - minT + 1)) * (width - 80);
+  }, [hasChart, chart, versions, width]);
+  
+  const toY = useCallback((price) => {
+    if (hasChart) {
+      try {
+        if (price == null) return null;
+        const y = priceSeries.priceToCoordinate(price);
+        return Number.isFinite(y) ? y : null;
+      } catch { return null; }
+    }
+    
+    if (versions.length === 0) return height / 2;
+    
+    // Fallback
     const allPrices = versions.flatMap(v => [
       v.snapshot?.levels?.top, v.snapshot?.levels?.bottom
     ].filter(Boolean));
-    
-    const minT = Math.min(...allTimes) - 86400 * 2;
-    const maxT = Math.max(...allTimes) + 86400 * 2;
     const minP = Math.min(...allPrices) * 0.96;
     const maxP = Math.max(...allPrices) * 1.04;
-    
-    return {
-      toX: (time) => {
-        const normalized = normalizeTime(time);
-        if (!normalized) return width / 2;
-        return 40 + ((normalized - minT) / (maxT - minT + 1)) * (width - 80);
-      },
-      toY: (price) => {
-        if (price == null) return height / 2;
-        return height - 40 - ((price - minP) / (maxP - minP)) * (height - 80);
-      }
-    };
-  }, [hasChart, chart, priceSeries, versions, width, height]);
+    if (price == null) return height / 2;
+    return height - 40 - ((price - minP) / (maxP - minP)) * (height - 80);
+  }, [hasChart, priceSeries, versions, height]);
   
   if (versions.length === 0) return null;
   
@@ -140,17 +162,20 @@ const IdeaChartOverlay = ({
     const startTime = levels.start_time || version.timestamp;
     const endTime = levels.end_time || (version.timestamp + 86400 * 7);
     
-    const x1 = toX(startTime) ?? (80 + idx * 60);
-    const x2 = toX(endTime) ?? (x1 + 250);
-    const yTop = toY(levels.top) ?? 80;
-    const yBottom = toY(levels.bottom) ?? 240;
+    const x1 = toX(startTime);
+    const x2 = toX(endTime);
+    const yTop = toY(levels.top);
+    const yBottom = toY(levels.bottom);
+    
+    // Skip if coordinates are out of view
+    if (x1 == null || x2 == null || yTop == null || yBottom == null) return null;
     
     const patternName = snapshot.pattern || '';
     const isTriangle = patternName.includes('triangle') || patternName.includes('wedge');
     const isRange = patternName.includes('rectangle') || patternName.includes('range') || patternName.includes('head');
     
     // Fill area
-    const fillOpacity = isActive ? 0.06 : 0.02;
+    const fillOpacity = isActive ? 0.08 : 0.03;
     const fillColor = isActive ? '#3b82f6' : '#94a3b8';
     
     if (isTriangle) {
@@ -254,9 +279,9 @@ const IdeaChartOverlay = ({
     }
     
     // Version badge
-    const badgeFill = isActive ? 'rgba(59, 130, 246, 0.15)' : 'rgba(148, 163, 184, 0.08)';
+    const badgeFill = isActive ? 'rgba(59, 130, 246, 0.12)' : 'rgba(148, 163, 184, 0.08)';
     const badgeStroke = isActive ? '#3b82f6' : '#94a3b8';
-    const badgeText = isActive ? '#3b82f6' : '#94a3b8';
+    const badgeText = isActive ? '#3b82f6' : '#64748b';
     
     elements.push(
       <g key={`${key}-badge`} opacity={style.opacity}>
@@ -295,8 +320,11 @@ const IdeaChartOverlay = ({
     
     const resultTime = (levels.end_time || lastVersion.timestamp) + 86400 * 2;
     
-    const x = toX(resultTime) ?? (width - 60);
-    const y = toY(resultPrice) ?? (height / 2);
+    const x = toX(resultTime);
+    const y = toY(resultPrice);
+    
+    // Skip if out of view
+    if (x == null || y == null) return null;
     
     const isCorrect = idea.outcome === 'success_up' || idea.outcome === 'success_down';
     const isWrong = idea.outcome === 'invalidated';
@@ -349,26 +377,18 @@ const IdeaChartOverlay = ({
   
   // ============================================
   // RENDER CONFIDENCE EVOLUTION LINE
-  // Only renders within idea version boundaries
   // ============================================
   const renderConfidenceLine = () => {
     if (versions.length < 2) return null;
-    
-    // Get time boundaries from versions
-    const firstVersion = versions[0];
-    const lastVersion = versions[versions.length - 1];
-    const ideaStartTime = firstVersion.timestamp || firstVersion.snapshot?.levels?.start_time;
-    const ideaEndTime = lastVersion.timestamp || lastVersion.snapshot?.levels?.end_time;
     
     const points = versions.map((v, i) => {
       const prob = v.snapshot?.probability?.up || v.snapshot?.confidence || 0.5;
       const x = toX(v.timestamp);
       // Map probability to Y: use a narrow band at top of chart
-      // y = chartHeight * (1 - prob) approach
       const bandTop = height * 0.08;
       const bandBottom = height * 0.22;
       const y = bandTop + (1 - prob) * (bandBottom - bandTop);
-      return { x: x ?? (40 + i * (width - 80) / (versions.length - 1)), y, prob, v: v.v };
+      return { x, y, prob, v: v.v };
     }).filter(p => p.x != null);
     
     if (points.length < 2) return null;
@@ -386,7 +406,7 @@ const IdeaChartOverlay = ({
         {/* Line - opacity ≤ 0.7, strokeWidth = 2 */}
         <path
           d={pathD}
-          stroke="#60a5fa"
+          stroke="#3b82f6"
           strokeWidth={2}
           fill="none"
           opacity={0.7}
@@ -399,16 +419,16 @@ const IdeaChartOverlay = ({
           <g key={`conf-dot-${i}`}>
             {/* Subtle glow */}
             <circle cx={p.x} cy={p.y} r={6}
-              fill="#60a5fa" opacity={0.08}
+              fill="#3b82f6" opacity={0.1}
             />
             {/* Dot */}
             <circle cx={p.x} cy={p.y} r={3.5}
-              fill="#60a5fa" stroke="#ffffff" strokeWidth={1.5}
+              fill="#3b82f6" stroke="#ffffff" strokeWidth={1.5}
             />
             {/* Label */}
             <text
               x={p.x} y={p.y - 8}
-              textAnchor="middle" fill="#60a5fa"
+              textAnchor="middle" fill="#3b82f6"
               fontSize="9" fontWeight="700" fontFamily="Inter, sans-serif"
               opacity={0.85}
             >
@@ -434,7 +454,7 @@ const IdeaChartOverlay = ({
   };
   
   // ============================================
-  // MAIN RENDER
+  // MAIN RENDER — NO viewBox, pixel-perfect coordinates
   // ============================================
   return (
     <svg
@@ -448,22 +468,19 @@ const IdeaChartOverlay = ({
         pointerEvents: 'none',
         overflow: 'visible',
         zIndex: 55,
-        transition: 'opacity 0.3s ease',
       }}
-      viewBox={`0 0 ${width} ${height}`}
-      preserveAspectRatio="none"
     >
       {/* Ghost versions (older) */}
       {versions.map((v, i) => (
         i !== currentIdx && (
-          <g key={`ghost-${i}`} style={{ transition: 'opacity 0.4s ease' }}>
+          <g key={`ghost-${i}`}>
             {renderVersion(v, i, false)}
           </g>
         )
       ))}
       
       {/* Active version */}
-      <g key="active-version" style={{ transition: 'opacity 0.3s ease' }}>
+      <g key="active-version">
         {renderVersion(versions[currentIdx], currentIdx, true)}
       </g>
       
