@@ -1,17 +1,18 @@
 /**
- * IdeaChart — EVOLUTION-FOCUSED Chart
- * ====================================
+ * IdeaChart — Uses REAL Pattern Renderer from TA
+ * ================================================
  * 
- * Features:
- * 1. Past candles FADED (before version transition)
- * 2. Current candles FULL COLOR
- * 3. Overlay synced with pan/zoom
- * 4. Story-telling visualization
+ * KEY PRINCIPLE: 
+ * - NO fake geometry
+ * - Uses the SAME renderPattern as TA/Research
+ * - Pattern boundaries come from actual swing points
+ * - Overlay only for UI elements (HUD, transition, legend)
  */
 
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import styled from 'styled-components';
 import { createChart, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { renderPattern, clearPattern, drawAnchorPoints } from '../../../chart/renderers/patternRenderer';
 import IdeaChartOverlay from './IdeaChartOverlay';
 
 const ChartWrapper = styled.div`
@@ -60,210 +61,86 @@ const ReplayIndicator = styled.div`
   }
 `;
 
-const PerformanceBadge = styled.div`
-  position: absolute;
-  top: 14px;
-  left: 14px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: rgba(139, 92, 246, 0.95);
-  color: #ffffff;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  z-index: 20;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
-  pointer-events: none;
-`;
-
-// Build Win/Loss zones from completed ideas
-function buildPerformanceZones(allIdeas, idea) {
-  if (!allIdeas?.length) return [];
-  
-  const completed = allIdeas.filter(i => i.status === 'completed');
-  if (completed.length === 0) return [];
-  
-  const entries = [];
-  for (const i of completed) {
-    const lastV = i.versions?.[i.versions.length - 1];
-    if (!lastV?.snapshot?.levels) continue;
-    const { top, bottom } = lastV.snapshot.levels;
-    const isWin = i.outcome === 'success_up' || i.outcome === 'success_down';
-    entries.push({ top, bottom, mid: (top + bottom) / 2, isWin, idea: i });
-  }
-  
-  if (entries.length === 0) return [];
-  
-  const allPrices = entries.flatMap(e => [e.top, e.bottom]);
-  const minP = Math.min(...allPrices);
-  const maxP = Math.max(...allPrices);
-  const range = maxP - minP;
-  const bucketSize = range > 1000 ? 1000 : range > 100 ? 50 : range > 10 ? 5 : 1;
-  
-  const zones = {};
-  for (const e of entries) {
-    const bucket = Math.floor(e.mid / bucketSize) * bucketSize;
-    if (!zones[bucket]) zones[bucket] = { wins: 0, losses: 0 };
-    if (e.isWin) zones[bucket].wins++;
-    else zones[bucket].losses++;
-  }
-  
-  return Object.entries(zones)
-    .map(([price, z]) => {
-      const total = z.wins + z.losses;
-      if (total < 3) return null;
-      return {
-        priceFrom: parseFloat(price),
-        priceTo: parseFloat(price) + bucketSize,
-        winrate: z.wins / total,
-        wins: z.wins,
-        losses: z.losses,
-        samples: total,
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => b.samples - a.samples)
-    .slice(0, 7);
-}
-
-// Performance SVG Overlay (for performance mode)
-const PerformanceOverlay = ({ zones, allIdeas, width, height, chart, priceSeries }) => {
-  if (!zones?.length) return null;
-  
-  const hasChart = chart && priceSeries;
-  
-  const toY = hasChart
-    ? (price) => {
-        try {
-          const y = priceSeries.priceToCoordinate(price);
-          return Number.isFinite(y) ? y : null;
-        } catch { return null; }
-      }
-    : (price) => {
-        const allPrices = zones.flatMap(z => [z.priceFrom, z.priceTo]);
-        const minP = Math.min(...allPrices) * 0.96;
-        const maxP = Math.max(...allPrices) * 1.04;
-        return height - 40 - ((price - minP) / (maxP - minP)) * (height - 80);
-      };
-  
-  const normalizeTime = (t) => t > 9999999999 ? Math.floor(t / 1000) : t;
-  
-  const toX = hasChart
-    ? (time) => {
-        try {
-          const ts = chart.timeScale();
-          const x = ts.timeToCoordinate(normalizeTime(time));
-          return Number.isFinite(x) ? x : null;
-        } catch { return null; }
-      }
-    : (time) => width / 2;
-  
-  const resultDots = (allIdeas || [])
-    .filter(i => i.status === 'completed' && i.versions?.length)
-    .map(i => {
-      const lastV = i.versions[i.versions.length - 1];
-      const levels = lastV?.snapshot?.levels;
-      if (!levels) return null;
-      const isWin = i.outcome === 'success_up' || i.outcome === 'success_down';
-      const price = isWin ? levels.top : levels.bottom;
-      const time = lastV.timestamp;
-      return { x: toX(time), y: toY(price), isWin, idea: i };
-    })
-    .filter(d => d && d.y != null);
-  
-  return (
-    <svg
-      data-testid="performance-overlay"
-      style={{
-        position: 'absolute',
-        top: 0, left: 0,
-        width: '100%', height: '100%',
-        pointerEvents: 'none',
-        overflow: 'visible',
-        zIndex: 50,
-      }}
-    >
-      {zones.map((z, i) => {
-        const y1 = toY(z.priceFrom);
-        const y2 = toY(z.priceTo);
-        if (y1 == null || y2 == null) return null;
-        
-        const isStrong = z.winrate > 0.65;
-        const isWeak = z.winrate < 0.4;
-        const color = isStrong ? 'rgba(34,197,94,0.08)' : isWeak ? 'rgba(239,68,68,0.08)' : 'transparent';
-        
-        if (!isStrong && !isWeak) return null;
-        
-        return (
-          <g key={`zone-${i}`}>
-            <rect
-              x={0} y={Math.min(y1, y2)}
-              width={width} height={Math.abs(y2 - y1)}
-              fill={color}
-            />
-            {z.winrate > 0.6 && (
-              <text
-                x={width - 60} y={(y1 + y2) / 2 + 4}
-                fill={isStrong ? '#16a34a' : '#dc2626'}
-                fontSize="10" fontWeight="700" fontFamily="Inter, sans-serif"
-                opacity={0.7}
-              >
-                {Math.round(z.winrate * 100)}%
-              </text>
-            )}
-          </g>
-        );
-      })}
-      
-      {resultDots.map((d, i) => (
-        <g key={`dot-${i}`}>
-          <circle
-            cx={d.x ?? width / 2} cy={d.y} r={6}
-            fill={d.isWin ? '#22c55e' : '#ef4444'}
-            opacity={0.9}
-            stroke="#ffffff" strokeWidth={1.5}
-          />
-        </g>
-      ))}
-    </svg>
-  );
-};
-
-// Generate mock candles that fit the idea's price range
-function generateMockCandles(idea) {
+// Generate candles that follow the pattern boundaries
+function generateCandlesFromPattern(idea) {
   if (!idea?.versions?.length) return [];
   
-  const allLevels = idea.versions.map(v => v.snapshot?.levels).filter(Boolean);
-  const allTimes = idea.versions.map(v => v.timestamp).filter(Boolean);
+  const allVersions = idea.versions;
+  const allBoundaries = allVersions.flatMap(v => v.snapshot?.boundaries || []);
+  const allAnchors = allVersions.flatMap(v => v.snapshot?.anchors || []);
+  const allLevels = allVersions.map(v => v.snapshot?.levels).filter(Boolean);
   
-  if (allLevels.length === 0 || allTimes.length === 0) return [];
+  if (allLevels.length === 0) return [];
   
-  const minPrice = Math.min(...allLevels.map(l => l.bottom || l.top || 0).filter(Boolean)) * 0.96;
-  const maxPrice = Math.max(...allLevels.map(l => l.top || l.bottom || 0).filter(Boolean)) * 1.04;
+  // Get price range from all levels
+  const minPrice = Math.min(...allLevels.map(l => l.bottom || l.top || 0).filter(Boolean)) * 0.97;
+  const maxPrice = Math.max(...allLevels.map(l => l.top || l.bottom || 0).filter(Boolean)) * 1.03;
   const priceRange = maxPrice - minPrice;
   
-  const startTime = Math.min(...allTimes) - 86400 * 5;
-  const endTime = Math.max(...allTimes) + 86400 * 5;
+  // Get time range
+  const allTimes = [
+    ...allVersions.map(v => v.timestamp),
+    ...allLevels.flatMap(l => [l.start_time, l.end_time]),
+    ...allAnchors.map(a => a.time),
+    ...allBoundaries.flatMap(b => [b.x1, b.x2]),
+  ].filter(Boolean);
   
-  const interval = 14400; // 4 hours
+  const startTime = Math.min(...allTimes) - 86400 * 3;
+  const endTime = Math.max(...allTimes) + 86400 * 3;
+  
+  const interval = 14400; // 4H candles
   const candles = [];
-  let prevClose = minPrice + priceRange * 0.4;
   
+  // Build anchor price map for realistic candles
+  const anchorMap = {};
+  allAnchors.forEach(a => {
+    const bucket = Math.floor(a.time / interval) * interval;
+    if (!anchorMap[bucket]) anchorMap[bucket] = [];
+    anchorMap[bucket].push(a);
+  });
+  
+  let prevClose = minPrice + priceRange * 0.4;
   const midPrice = (minPrice + maxPrice) / 2;
   
   for (let t = startTime; t <= endTime; t += interval) {
-    const volatility = priceRange * 0.012;
-    const meanRevert = (midPrice - prevClose) * 0.02;
-    const trend = Math.sin((t - startTime) / 86400 / 3) * volatility * 0.5;
-    const noise = (Math.random() - 0.5) * volatility * 2;
+    const bucket = Math.floor(t / interval) * interval;
+    const anchorsHere = anchorMap[bucket] || [];
     
-    const change = meanRevert + trend + noise;
-    const open = prevClose;
-    const close = open + change;
-    const high = Math.max(open, close) + Math.random() * volatility;
-    const low = Math.min(open, close) - Math.random() * volatility;
+    let open = prevClose;
+    let close, high, low;
+    
+    if (anchorsHere.length > 0) {
+      // Candle should touch anchor points
+      const upperAnchor = anchorsHere.find(a => a.type === 'upper');
+      const lowerAnchor = anchorsHere.find(a => a.type === 'lower');
+      
+      if (upperAnchor) {
+        high = upperAnchor.price;
+        close = high - Math.random() * priceRange * 0.01;
+        low = close - Math.random() * priceRange * 0.015;
+      } else if (lowerAnchor) {
+        low = lowerAnchor.price;
+        close = low + Math.random() * priceRange * 0.01;
+        high = close + Math.random() * priceRange * 0.015;
+      } else {
+        const volatility = priceRange * 0.012;
+        const change = (Math.random() - 0.5) * volatility * 2;
+        close = open + change;
+        high = Math.max(open, close) + Math.random() * volatility;
+        low = Math.min(open, close) - Math.random() * volatility;
+      }
+    } else {
+      // Normal candle with mean reversion
+      const volatility = priceRange * 0.01;
+      const meanRevert = (midPrice - prevClose) * 0.015;
+      const trend = Math.sin((t - startTime) / 86400 / 4) * volatility * 0.3;
+      const noise = (Math.random() - 0.5) * volatility * 1.5;
+      
+      const change = meanRevert + trend + noise;
+      close = open + change;
+      high = Math.max(open, close) + Math.random() * volatility;
+      low = Math.min(open, close) - Math.random() * volatility;
+    }
     
     candles.push({
       time: t,
@@ -282,27 +159,25 @@ function generateMockCandles(idea) {
 const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320, chartMode = 'idea', allIdeas = [] }) => {
   const chartRef = useRef(null);
   const chartInstanceRef = useRef(null);
+  const candleSeriesRef = useRef(null);
+  const patternObjectsRef = useRef({ boundaries: [], levels: [], zones: [] });
+  
   const [chartInstance, setChartInstance] = useState(null);
   const [priceSeriesInstance, setPriceSeriesInstance] = useState(null);
   const [dimensions, setDimensions] = useState({ width: 800, height });
   
-  const candles = useMemo(() => generateMockCandles(idea), [idea?.idea_id]);
+  const candles = useMemo(() => generateCandlesFromPattern(idea), [idea?.idea_id]);
   
-  const activeVersion = idea?.versions?.[activeVersionIndex ?? (idea?.versions?.length - 1)];
+  const currentVersionIdx = activeVersionIndex ?? Math.max((idea?.versions?.length || 1) - 1, 0);
+  const activeVersion = idea?.versions?.[currentVersionIdx];
   
-  // Get version transition time for candle coloring
-  const versionTransitionTime = useMemo(() => {
-    if (!idea?.versions || idea.versions.length < 2) return null;
-    // Get timestamp of second-to-last version end or current version start
-    const currentVersion = idea.versions[activeVersionIndex ?? (idea.versions.length - 1)];
-    return currentVersion?.timestamp;
-  }, [idea, activeVersionIndex]);
-  
-  // Create/update chart
+  // Create chart
   useEffect(() => {
     if (!chartRef.current || candles.length === 0) return;
     
+    // Cleanup previous
     if (chartInstanceRef.current) {
+      clearPattern(chartInstanceRef.current, patternObjectsRef.current);
       try { chartInstanceRef.current.remove(); } catch {}
       chartInstanceRef.current = null;
     }
@@ -310,13 +185,12 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     const rect = chartRef.current.getBoundingClientRect();
     const w = rect.width || 800;
     
-    // LIGHT THEME
     const chart = createChart(chartRef.current, {
       width: w,
       height,
       layout: {
         background: { type: 'solid', color: '#ffffff' },
-        textColor: '#94a3b8',
+        textColor: '#64748b',
         fontFamily: "'Inter', -apple-system, sans-serif",
         fontSize: 11,
       },
@@ -331,13 +205,13 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
       },
       rightPriceScale: {
         borderColor: '#e2e8f0',
-        scaleMargins: { top: 0.15, bottom: 0.12 },
+        scaleMargins: { top: 0.12, bottom: 0.12 },
       },
       timeScale: {
         borderColor: '#e2e8f0',
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 20,
+        rightOffset: 15,
       },
     });
     
@@ -345,24 +219,22 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     setChartInstance(chart);
     setDimensions({ width: w, height });
     
-    // TWO CANDLE SERIES: Past (faded) + Current (full color)
-    // Unfortunately lightweight-charts doesn't support per-candle opacity
-    // So we use muted colors for "past" and vivid for "current"
-    
-    const priceSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#16c784',  // Green for up
-      downColor: '#ea3943', // Red for down
-      borderUpColor: '#16c784',
-      borderDownColor: '#ea3943',
-      wickUpColor: '#16c784',
-      wickDownColor: '#ea3943',
+    // Candle series
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor: '#22c55e',
+      downColor: '#ef4444',
+      borderUpColor: '#22c55e',
+      borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e',
+      wickDownColor: '#ef4444',
       lastValueVisible: false,
       priceLineVisible: false,
     });
     
-    setPriceSeriesInstance(priceSeries);
+    candleSeriesRef.current = candleSeries;
+    setPriceSeriesInstance(candleSeries);
     
-    // Process candles - apply faded colors to past candles
+    // Set candle data
     const seen = new Set();
     const mapped = candles
       .filter(c => c.time > 0)
@@ -371,30 +243,12 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
         if (seen.has(c.time)) return false;
         seen.add(c.time);
         return true;
-      })
-      .map(c => {
-        const isPast = versionTransitionTime && c.time < versionTransitionTime;
-        
-        // For past candles, we'll use different approach via borderVisible
-        // or just let them be - the overlay will show the evolution
-        return {
-          time: c.time,
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-          // Custom colors for visual hierarchy
-          color: isPast 
-            ? (c.close >= c.open ? '#94a3b8' : '#94a3b8')  // Muted gray for past
-            : undefined, // Default colors for current
-          wickColor: isPast ? '#94a3b8' : undefined,
-          borderColor: isPast ? '#94a3b8' : undefined,
-        };
       });
     
-    priceSeries.setData(mapped);
+    candleSeries.setData(mapped);
     chart.timeScale().fitContent();
     
+    // Resize handler
     const handleResize = () => {
       if (chartRef.current && chart) {
         const newRect = chartRef.current.getBoundingClientRect();
@@ -409,16 +263,68 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     return () => {
       resizeObserver.disconnect();
       if (chartInstanceRef.current) {
+        clearPattern(chartInstanceRef.current, patternObjectsRef.current);
         try { chartInstanceRef.current.remove(); } catch {}
         chartInstanceRef.current = null;
       }
     };
-  }, [candles, height, versionTransitionTime]);
+  }, [candles, height]);
   
-  const performanceZones = useMemo(() => 
-    chartMode === 'performance' ? buildPerformanceZones(allIdeas, idea) : [],
-    [chartMode, allIdeas, idea]
-  );
+  // Render patterns using REAL patternRenderer
+  useEffect(() => {
+    if (!chartInstanceRef.current || !candleSeriesRef.current || !idea?.versions) return;
+    
+    const chart = chartInstanceRef.current;
+    const candleSeries = candleSeriesRef.current;
+    
+    // Clear previous patterns
+    clearPattern(chart, patternObjectsRef.current);
+    patternObjectsRef.current = { boundaries: [], levels: [], zones: [] };
+    
+    // Render each version's pattern
+    idea.versions.forEach((version, idx) => {
+      const isActive = idx === currentVersionIdx;
+      const isPast = idx < currentVersionIdx;
+      
+      const snapshot = version.snapshot;
+      if (!snapshot?.boundaries?.length) return;
+      
+      // Build pattern contract for renderer
+      const patternContract = {
+        type: snapshot.pattern,
+        boundaries: snapshot.boundaries,
+        anchors: snapshot.anchors || [],
+        levels: [],
+      };
+      
+      // Different styling for past vs active
+      const options = {
+        boundaryColor: isActive ? '#f59e0b' : '#9ca3af', // Amber for active, gray for past
+        boundaryWidth: isActive ? 3 : 2,
+        upperAnchorColor: isActive ? '#f59e0b' : '#9ca3af',
+        lowerAnchorColor: isActive ? '#f59e0b' : '#9ca3af',
+      };
+      
+      // Render using the SAME function as TA
+      const objects = renderPattern(chart, candleSeries, patternContract, options);
+      
+      // Collect for cleanup
+      patternObjectsRef.current.boundaries.push(...(objects.boundaries || []));
+      patternObjectsRef.current.levels.push(...(objects.levels || []));
+      
+      console.log(`[IdeaChart] Rendered V${version.v} pattern:`, objects);
+    });
+    
+    // Draw anchor points for active version only
+    if (activeVersion?.snapshot?.anchors?.length && candleSeries) {
+      drawAnchorPoints(candleSeries, activeVersion.snapshot.anchors, {
+        upperColor: '#f59e0b',
+        lowerColor: '#f59e0b',
+        reactionGlow: '#f59e0b',
+      });
+    }
+    
+  }, [idea, currentVersionIdx, activeVersion]);
   
   if (!idea) return null;
   
@@ -426,33 +332,16 @@ const IdeaChart = ({ idea, activeVersionIndex, isReplaying = false, height = 320
     <ChartWrapper data-testid="idea-chart">
       <ChartContainer ref={chartRef} $height={height} />
       
-      {/* IDEA MODE: Evolution Overlay */}
+      {/* UI Overlay (HUD, transition, legend) */}
       {chartMode === 'idea' && (
         <IdeaChartOverlay
           idea={idea}
-          activeVersionIndex={activeVersionIndex}
+          activeVersionIndex={currentVersionIdx}
           chart={chartInstance}
           priceSeries={priceSeriesInstance}
           width={dimensions.width}
           height={dimensions.height}
         />
-      )}
-      
-      {/* PERFORMANCE MODE: Win/Loss Zones */}
-      {chartMode === 'performance' && (
-        <>
-          <PerformanceOverlay
-            zones={performanceZones}
-            allIdeas={allIdeas}
-            width={dimensions.width}
-            height={dimensions.height}
-            chart={chartInstance}
-            priceSeries={priceSeriesInstance}
-          />
-          <PerformanceBadge data-testid="performance-mode-badge">
-            PERFORMANCE
-          </PerformanceBadge>
-        </>
       )}
       
       {/* Replay indicator */}

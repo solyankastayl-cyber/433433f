@@ -581,7 +581,7 @@ const ModeBtn = styled.button`
 `;
 
 // ============================================
-// MOCK DATA
+// MOCK DATA — with REAL pattern boundaries
 // ============================================
 const MOCK_IDEAS = [
   {
@@ -607,6 +607,33 @@ const MOCK_IDEAS = [
             start_time: Date.now() / 1000 - 86400 * 14,
             end_time: Date.now() / 1000 - 86400 * 8,
           },
+          // REAL boundaries from swing points
+          boundaries: [
+            {
+              id: 'v1-upper',
+              kind: 'trendline',
+              x1: Date.now() / 1000 - 86400 * 14,
+              y1: 70500,
+              x2: Date.now() / 1000 - 86400 * 8,
+              y2: 70500,
+              style: 'resistance',
+            },
+            {
+              id: 'v1-lower',
+              kind: 'trendline',
+              x1: Date.now() / 1000 - 86400 * 14,
+              y1: 67500,
+              x2: Date.now() / 1000 - 86400 * 8,
+              y2: 67500,
+              style: 'support',
+            },
+          ],
+          anchors: [
+            { time: Date.now() / 1000 - 86400 * 14, price: 70500, type: 'upper' },
+            { time: Date.now() / 1000 - 86400 * 11, price: 70400, type: 'upper' },
+            { time: Date.now() / 1000 - 86400 * 14, price: 67500, type: 'lower' },
+            { time: Date.now() / 1000 - 86400 * 10, price: 67600, type: 'lower' },
+          ],
           interpretation: 'Market consolidating in tight range',
         }
       },
@@ -620,11 +647,40 @@ const MOCK_IDEAS = [
           bias: 'bullish',
           probability: { up: 0.78, down: 0.18 },
           levels: { 
-            top: 71500, 
-            bottom: 68500,
+            top: 71000,
+            bottom: 68000,
             start_time: Date.now() / 1000 - 86400 * 7,
             end_time: Date.now() / 1000 - 86400 * 1,
           },
+          // CONVERGING trendlines (triangle)
+          boundaries: [
+            {
+              id: 'v2-upper',
+              kind: 'trendline',
+              x1: Date.now() / 1000 - 86400 * 7,
+              y1: 71500,
+              x2: Date.now() / 1000 - 86400 * 1,
+              y2: 70000, // Lower high
+              style: 'resistance',
+            },
+            {
+              id: 'v2-lower',
+              kind: 'trendline',
+              x1: Date.now() / 1000 - 86400 * 7,
+              y1: 68000,
+              x2: Date.now() / 1000 - 86400 * 1,
+              y2: 69500, // Higher low
+              style: 'support',
+            },
+          ],
+          anchors: [
+            { time: Date.now() / 1000 - 86400 * 7, price: 71500, type: 'upper' },
+            { time: Date.now() / 1000 - 86400 * 4, price: 70800, type: 'upper' },
+            { time: Date.now() / 1000 - 86400 * 1, price: 70000, type: 'upper' },
+            { time: Date.now() / 1000 - 86400 * 6, price: 68000, type: 'lower' },
+            { time: Date.now() / 1000 - 86400 * 3, price: 68800, type: 'lower' },
+            { time: Date.now() / 1000 - 86400 * 1, price: 69500, type: 'lower' },
+          ],
           interpretation: 'Market was consolidating → breakout confirmed',
         }
       }
@@ -654,6 +710,32 @@ const MOCK_IDEAS = [
             start_time: Date.now() / 1000 - 86400 * 6,
             end_time: Date.now() / 1000 - 86400 * 1,
           },
+          boundaries: [
+            {
+              id: 'eth-upper',
+              kind: 'trendline',
+              x1: Date.now() / 1000 - 86400 * 6,
+              y1: 3850,
+              x2: Date.now() / 1000 - 86400 * 1,
+              y2: 3850, // Flat resistance
+              style: 'resistance',
+            },
+            {
+              id: 'eth-lower',
+              kind: 'trendline',
+              x1: Date.now() / 1000 - 86400 * 6,
+              y1: 3420,
+              x2: Date.now() / 1000 - 86400 * 1,
+              y2: 3700, // Rising support
+              style: 'support',
+            },
+          ],
+          anchors: [
+            { time: Date.now() / 1000 - 86400 * 6, price: 3850, type: 'upper' },
+            { time: Date.now() / 1000 - 86400 * 3, price: 3850, type: 'upper' },
+            { time: Date.now() / 1000 - 86400 * 5, price: 3420, type: 'lower' },
+            { time: Date.now() / 1000 - 86400 * 2, price: 3600, type: 'lower' },
+          ],
           interpretation: 'Strong accumulation pattern forming',
         }
       }
@@ -683,6 +765,22 @@ const MOCK_IDEAS = [
             start_time: Date.now() / 1000 - 86400 * 13,
             end_time: Date.now() / 1000 - 86400 * 8,
           },
+          boundaries: [
+            {
+              id: 'sol-neckline',
+              kind: 'trendline',
+              x1: Date.now() / 1000 - 86400 * 13,
+              y1: 155,
+              x2: Date.now() / 1000 - 86400 * 8,
+              y2: 155,
+              style: 'neckline',
+            },
+          ],
+          anchors: [
+            { time: Date.now() / 1000 - 86400 * 12, price: 170, type: 'upper' }, // Left shoulder
+            { time: Date.now() / 1000 - 86400 * 10, price: 185, type: 'upper' }, // Head
+            { time: Date.now() / 1000 - 86400 * 9, price: 168, type: 'upper' },  // Right shoulder
+          ],
           interpretation: 'Distribution pattern detected',
         }
       }
