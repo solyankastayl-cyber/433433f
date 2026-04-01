@@ -453,6 +453,166 @@ class PredictionEngineV3:
 
 
 # ══════════════════════════════════════════════════════════════
+# Regime-Aware Prediction (NEW)
+# ══════════════════════════════════════════════════════════════
+
+def build_prediction_regime_aware(
+    inp: Dict,
+    prev_regime: Optional[str] = None
+) -> Dict:
+    """
+    Build prediction using regime-aware routing.
+    
+    Args:
+        inp: Prediction input containing:
+            - symbol: str
+            - timeframe: str
+            - price: float
+            - structure: dict
+            - pattern: dict
+            - indicators: dict
+        prev_regime: Previous regime (for hysteresis)
+    
+    Returns:
+        Full prediction payload dict
+    """
+    from .regime_detector import detect_regime, get_regime_confidence, regime_to_model_name
+    from .regime_router import route_prediction, apply_bias_fixes
+    from datetime import timezone
+    
+    symbol = inp.get("symbol", "UNKNOWN")
+    timeframe = inp.get("timeframe", "1D")
+    price = float(inp.get("price", 0))
+    
+    # 1. Detect regime with hysteresis
+    regime = detect_regime(inp, prev_regime)
+    regime_conf = get_regime_confidence(inp, regime)
+    model = regime_to_model_name(regime)
+    
+    # 2. Route to appropriate model
+    direction, target, confidence = route_prediction(inp, regime)
+    
+    # 3. Apply bias fixes
+    direction, target, confidence = apply_bias_fixes(
+        direction, target, confidence, inp
+    )
+    
+    # 4. Sanity checks
+    # Cap move at 20%
+    expected_return = (target - price) / price if price > 0 else 0
+    if abs(expected_return) > 0.20:
+        target = price * (1.20 if expected_return > 0 else 0.80)
+        expected_return = (target - price) / price
+    
+    # Cap confidence at 90%
+    confidence = min(confidence, 0.90)
+    
+    # 5. Calculate direction score
+    direction_score = confidence if direction == "bullish" else (
+        -confidence if direction == "bearish" else 0
+    )
+    
+    # 6. Build scenarios
+    scenarios = _build_regime_scenarios(price, direction, expected_return, confidence)
+    
+    # 7. Build final payload
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        
+        # Regime info (NEW)
+        "regime": regime,
+        "regime_confidence": round(regime_conf, 3),
+        "model": model,
+        
+        # Direction
+        "direction": {
+            "label": direction,
+            "score": round(direction_score, 3),
+        },
+        
+        # Target
+        "target": {
+            "start_price": round(price, 2),
+            "target_price": round(target, 2),
+            "expected_return": round(expected_return, 4),
+        },
+        
+        # Confidence
+        "confidence": {
+            "value": round(confidence, 3),
+            "label": _regime_confidence_label(confidence),
+        },
+        
+        # Scenarios
+        "scenarios": scenarios,
+        
+        # Meta
+        "_engine_version": "v3_regime",
+        "_pattern_used": inp.get("pattern", {}).get("type", "none"),
+        "_trend_state": inp.get("structure", {}).get("trend", "flat"),
+    }
+
+
+def _build_regime_scenarios(
+    price: float,
+    direction: str,
+    base_return: float,
+    confidence: float
+) -> Dict:
+    """Build optimistic/base/pessimistic scenarios."""
+    
+    if direction == "neutral":
+        return {
+            "base": {
+                "target_price": price,
+                "expected_return": 0,
+            },
+            "optimistic": {
+                "target_price": round(price * 1.03, 2),
+                "expected_return": 0.03,
+            },
+            "pessimistic": {
+                "target_price": round(price * 0.97, 2),
+                "expected_return": -0.03,
+            },
+        }
+    
+    # Scale scenarios based on base return
+    opt_mult = 1.5 if direction == "bullish" else 0.5
+    pess_mult = 0.5 if direction == "bullish" else 1.5
+    
+    opt_return = base_return * opt_mult
+    pess_return = base_return * pess_mult
+    
+    return {
+        "base": {
+            "target_price": round(price * (1 + base_return), 2),
+            "expected_return": round(base_return, 4),
+        },
+        "optimistic": {
+            "target_price": round(price * (1 + opt_return), 2),
+            "expected_return": round(opt_return, 4),
+        },
+        "pessimistic": {
+            "target_price": round(price * (1 + pess_return), 2),
+            "expected_return": round(pess_return, 4),
+        },
+    }
+
+
+def _regime_confidence_label(conf: float) -> str:
+    """Map confidence value to label."""
+    if conf >= 0.75:
+        return "HIGH"
+    elif conf >= 0.55:
+        return "MEDIUM"
+    else:
+        return "LOW"
+
+
+# ══════════════════════════════════════════════════════════════
 # Module-level singleton
 # ══════════════════════════════════════════════════════════════
 

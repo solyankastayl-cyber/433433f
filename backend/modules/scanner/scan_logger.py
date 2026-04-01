@@ -68,6 +68,10 @@ def log_scan_result(
         "expected_return": round(
             prediction.get("scenarios", {}).get("base", {}).get("expected_return", 0), 4
         ),
+        # Regime (NEW)
+        "regime": prediction.get("regime", "unknown"),
+        "regime_conf": round(prediction.get("regime_confidence", 0), 2),
+        "model": prediction.get("model", "unknown"),
         # Meta
         "ta_source": ta_payload.get("_ta_source", "unknown"),
         "ta_regime": ta_payload.get("_ta_layers_regime", "unknown"),
@@ -120,7 +124,9 @@ def get_logs_summary() -> Dict[str, Any]:
         - unique_symbols
         - direction_distribution
         - pattern_distribution
+        - regime_distribution (NEW)
         - avg_confidence
+        - metrics_by_regime (NEW)
     """
     logs = get_recent_logs(limit=500)
     
@@ -130,8 +136,12 @@ def get_logs_summary() -> Dict[str, Any]:
     # Count directions
     dir_counts = {"bullish": 0, "bearish": 0, "neutral": 0}
     pattern_counts = {}
+    regime_counts = {}
     confidences = []
     symbols = set()
+    
+    # Metrics by regime (NEW)
+    regime_metrics = {}
     
     for log in logs:
         symbols.add(log.get("symbol", ""))
@@ -142,15 +152,41 @@ def get_logs_summary() -> Dict[str, Any]:
         pattern = log.get("pattern", "none")
         pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
         
+        regime = log.get("regime", "unknown")
+        regime_counts[regime] = regime_counts.get(regime, 0) + 1
+        
         conf = log.get("conf_value", 0)
         if conf > 0:
             confidences.append(conf)
+        
+        # Aggregate by regime
+        if regime not in regime_metrics:
+            regime_metrics[regime] = {
+                "count": 0,
+                "bullish": 0,
+                "bearish": 0,
+                "neutral": 0,
+                "confidence_sum": 0,
+            }
+        rm = regime_metrics[regime]
+        rm["count"] += 1
+        rm[pred_dir] = rm.get(pred_dir, 0) + 1
+        rm["confidence_sum"] += conf
+    
+    # Compute regime-level stats
+    for regime, rm in regime_metrics.items():
+        rm["avg_confidence"] = round(rm["confidence_sum"] / rm["count"], 3) if rm["count"] > 0 else 0
+        rm["bullish_pct"] = round(rm["bullish"] / rm["count"], 2) if rm["count"] > 0 else 0
+        rm["bearish_pct"] = round(rm["bearish"] / rm["count"], 2) if rm["count"] > 0 else 0
+        del rm["confidence_sum"]
     
     return {
         "total_scans": len(logs),
         "unique_symbols": len(symbols),
         "direction_distribution": dir_counts,
         "pattern_distribution": pattern_counts,
+        "regime_distribution": regime_counts,
+        "metrics_by_regime": regime_metrics,
         "avg_confidence": round(sum(confidences) / len(confidences), 3) if confidences else 0,
         "always_bullish": dir_counts.get("bearish", 0) == 0 and dir_counts.get("bullish", 0) > 0,
         "always_bearish": dir_counts.get("bullish", 0) == 0 and dir_counts.get("bearish", 0) > 0,

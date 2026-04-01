@@ -348,14 +348,15 @@ def _extract_indicators_from_ta(ta: Dict) -> Dict[str, Any]:
     return result
 
 
-def build_real_prediction(ta_payload: Dict[str, Any]) -> Dict[str, Any]:
+def build_real_prediction(ta_payload: Dict[str, Any], prev_regime: Optional[str] = None) -> Dict[str, Any]:
     """
-    Build real prediction from TA payload.
+    Build real prediction from TA payload using regime-aware routing.
     
     This replaces dummy_builders.build_dummy_prediction().
     
     Args:
         ta_payload: Output from build_real_ta()
+        prev_regime: Previous regime for hysteresis (optional)
     
     Returns:
         Prediction payload dict (same schema as dummy version)
@@ -369,23 +370,28 @@ def build_real_prediction(ta_payload: Dict[str, Any]) -> Dict[str, Any]:
         return _fallback_prediction(ta_payload)
     
     try:
-        from modules.prediction.ta_interpreter import interpret_ta_output
-        from modules.prediction.prediction_engine import get_prediction_engine
+        # USE REGIME-AWARE PREDICTION ENGINE
+        from modules.prediction.prediction_engine_v3 import build_prediction_regime_aware
         
-        # 1. Interpret TA output → PredictionInput
-        pred_input = interpret_ta_output(ta_payload, symbol, timeframe)
+        # Build input dict for regime prediction
+        pred_input = {
+            "symbol": symbol,
+            "timeframe": timeframe,
+            "price": ta_payload.get("price", 0),
+            "structure": ta_payload.get("structure", {}),
+            "pattern": ta_payload.get("pattern", {}),
+            "indicators": ta_payload.get("indicators", {}),
+        }
         
-        # 2. Run prediction engine
-        engine = get_prediction_engine()
-        prediction = engine.predict(pred_input)
+        # Run regime-aware prediction
+        result = build_prediction_regime_aware(pred_input, prev_regime)
         
-        # 3. Convert to dict
-        result = prediction.to_dict()
+        # Add meta info
         result["_ta_source"] = ta_payload.get("_ta_source", "unknown")
         result["_ta_pattern"] = ta_payload.get("pattern", {}).get("type", "none")
         result["_ta_regime"] = ta_payload.get("_ta_layers_regime", "unknown")
         
-        # 4. LOG for monitoring (P1 requirement)
+        # LOG for monitoring (P1 requirement)
         try:
             from modules.scanner.scan_logger import log_scan_result
             log_scan_result(symbol, timeframe, ta_payload, result)
