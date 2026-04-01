@@ -1,13 +1,12 @@
 /**
- * IdeasView.jsx — TEXT-ONLY Ideas Evolution Tracker
- * ==================================================
+ * IdeasView.jsx — FULLY FUNCTIONAL Ideas Evolution Tracker
+ * =========================================================
  * 
- * NO CHART! Just text-based tracking:
- * - Pattern A → Pattern B evolution
- * - When pattern changed
- * - Result (WIN/LOSS/ACTIVE)
- * 
- * Simple, clean, works.
+ * Real backend integration:
+ * - Fetches ideas from /api/ta/ideas?full=true
+ * - Delete via DELETE /api/ta/ideas/{id}
+ * - "View in Chart" navigates to Research tab with correct symbol/timeframe
+ * - Auto-seeds DB if empty (first load)
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -23,14 +22,15 @@ import {
   ChevronRight,
   ArrowRight,
   Zap,
-  Filter,
   Trash2,
-  ExternalLink
+  ExternalLink,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { useMarket } from '../../../store/marketStore';
 
 // ============================================
-// STYLED COMPONENTS — Clean, Text-Focused
+// STYLED COMPONENTS
 // ============================================
 
 const Container = styled.div`
@@ -103,16 +103,23 @@ const RefreshBtn = styled.button`
   
   &:hover { border-color: #3b82f6; color: #3b82f6; }
   &:disabled { opacity: 0.5; cursor: not-allowed; }
+  
+  &.spinning svg {
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
 `;
 
-// Ideas List
 const IdeasList = styled.div`
   display: flex;
   flex-direction: column;
   gap: 16px;
 `;
 
-// Single Idea Card — TEXT FOCUSED
 const IdeaCard = styled.div`
   background: #ffffff;
   border-radius: 14px;
@@ -173,14 +180,13 @@ const StatusBadge = styled.div`
   
   ${({ $status }) => {
     switch ($status) {
-      case 'win': return `background: rgba(34, 197, 94, 0.1); color: #16a34a;`;
-      case 'loss': return `background: rgba(239, 68, 68, 0.1); color: #dc2626;`;
+      case 'completed': return `background: rgba(34, 197, 94, 0.1); color: #16a34a;`;
+      case 'invalidated': return `background: rgba(239, 68, 68, 0.1); color: #dc2626;`;
       default: return `background: rgba(59, 130, 246, 0.1); color: #2563eb;`;
     }
   }}
 `;
 
-// Evolution Timeline — THE MAIN VISUAL
 const EvolutionTimeline = styled.div`
   display: flex;
   align-items: stretch;
@@ -253,7 +259,6 @@ const TransitionArrow = styled.div`
   }
 `;
 
-// Details Row
 const DetailsRow = styled.div`
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -284,6 +289,48 @@ const DetailBlock = styled.div`
     &.positive { color: #16a34a; }
     &.negative { color: #dc2626; }
     &.neutral { color: #64748b; }
+  }
+`;
+
+const InterpretationRow = styled.div`
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #475569;
+  line-height: 1.5;
+  border-left: 3px solid #3b82f6;
+`;
+
+const ValidationRow = styled.div`
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: ${({ $result }) => $result === 'correct' ? 'rgba(34,197,94,0.06)' : 
+    $result === 'invalidated' ? 'rgba(239,68,68,0.06)' : '#f8fafc'};
+  border-radius: 8px;
+  border-left: 3px solid ${({ $result }) => $result === 'correct' ? '#16a34a' : 
+    $result === 'invalidated' ? '#dc2626' : '#94a3b8'};
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #475569;
+  
+  .val-label {
+    font-weight: 600;
+    color: ${({ $result }) => $result === 'correct' ? '#16a34a' : 
+      $result === 'invalidated' ? '#dc2626' : '#64748b'};
+  }
+  
+  .val-price {
+    font-weight: 600;
+    color: #1e293b;
+  }
+  
+  .val-pnl {
+    font-weight: 700;
+    color: ${({ $pnl }) => $pnl > 0 ? '#16a34a' : $pnl < 0 ? '#dc2626' : '#64748b'};
   }
 `;
 
@@ -321,9 +368,13 @@ const ActionBtn = styled.button`
     border-color: #ef4444;
     color: #ef4444;
   }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 `;
 
-// Empty State
 const EmptyState = styled.div`
   display: flex;
   flex-direction: column;
@@ -340,190 +391,182 @@ const EmptyState = styled.div`
   p { font-size: 13px; color: #64748b; margin: 0; max-width: 300px; }
 `;
 
+const LoadingState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+  
+  svg { 
+    width: 32px; height: 32px; color: #3b82f6; 
+    animation: spin 1s linear infinite;
+  }
+  
+  p { font-size: 14px; color: #64748b; margin-top: 12px; }
+  
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`;
+
+const ErrorBanner = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #dc2626;
+  
+  svg { width: 16px; height: 16px; flex-shrink: 0; }
+`;
+
 // ============================================
-// MOCK DATA
+// API
 // ============================================
-const MOCK_IDEAS = [
-  {
-    idea_id: 'idea-001',
-    asset: 'BTCUSDT',
-    timeframe: '4H',
-    status: 'completed',
-    outcome: 'success_up',
-    score: 1,
-    versions: [
-      {
-        v: 1,
-        timestamp: Date.now() / 1000 - 86400 * 12,
-        snapshot: {
-          pattern: 'rectangle',
-          lifecycle: 'forming',
-          confidence: 0.62,
-          bias: 'bullish',
-          probability: { up: 0.62, down: 0.28 },
-          levels: { top: 70500, bottom: 67500 },
-        }
-      },
-      {
-        v: 2,
-        timestamp: Date.now() / 1000 - 86400 * 4,
-        snapshot: {
-          pattern: 'triangle',
-          lifecycle: 'compression',
-          confidence: 0.78,
-          bias: 'bullish',
-          probability: { up: 0.78, down: 0.18 },
-          levels: { top: 71000, bottom: 68000 },
-        }
-      }
-    ],
-    created_at: new Date(Date.now() - 86400 * 12 * 1000).toISOString(),
-  },
-  {
-    idea_id: 'idea-002',
-    asset: 'ETHUSDT',
-    timeframe: '1D',
-    status: 'active',
-    outcome: null,
-    score: 0,
-    versions: [
-      {
-        v: 1,
-        timestamp: Date.now() / 1000 - 86400 * 3,
-        snapshot: {
-          pattern: 'ascending triangle',
-          lifecycle: 'confirmed',
-          confidence: 0.72,
-          bias: 'bullish',
-          probability: { up: 0.72, down: 0.24 },
-          levels: { top: 3850, bottom: 3420 },
-        }
-      }
-    ],
-    created_at: new Date(Date.now() - 86400 * 3 * 1000).toISOString(),
-  },
-  {
-    idea_id: 'idea-003',
-    asset: 'SOLUSDT',
-    timeframe: '4H',
-    status: 'completed',
-    outcome: 'invalidated',
-    score: -1,
-    versions: [
-      {
-        v: 1,
-        timestamp: Date.now() / 1000 - 86400 * 10,
-        snapshot: {
-          pattern: 'head and shoulders',
-          lifecycle: 'forming',
-          confidence: 0.55,
-          bias: 'bearish',
-          probability: { up: 0.35, down: 0.58 },
-          levels: { top: 185, bottom: 142 },
-        }
-      },
-      {
-        v: 2,
-        timestamp: Date.now() / 1000 - 86400 * 6,
-        snapshot: {
-          pattern: 'double top',
-          lifecycle: 'confirmed',
-          confidence: 0.48,
-          bias: 'bearish',
-          probability: { up: 0.38, down: 0.55 },
-          levels: { top: 180, bottom: 155 },
-        }
-      }
-    ],
-    created_at: new Date(Date.now() - 86400 * 10 * 1000).toISOString(),
-  },
-];
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+
+async function fetchIdeasAPI() {
+  const res = await fetch(`${API_URL}/api/ta/ideas?full=true`);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const data = await res.json();
+  return data.ideas || [];
+}
+
+async function deleteIdeaAPI(ideaId) {
+  const res = await fetch(`${API_URL}/api/ta/ideas/${ideaId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+  return await res.json();
+}
+
+async function seedIdeasAPI() {
+  const res = await fetch(`${API_URL}/api/ta/ideas/seed`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Seed failed: ${res.status}`);
+  return await res.json();
+}
 
 // ============================================
 // HELPERS
 // ============================================
 
-const formatDate = (timestamp) => {
-  const date = new Date(timestamp * 1000);
+const formatDate = (isoString) => {
+  const date = new Date(isoString);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-const formatTimeAgo = (timestamp) => {
-  const seconds = Math.floor((Date.now() / 1000) - timestamp);
-  const days = Math.floor(seconds / 86400);
-  if (days > 0) return `${days}d ago`;
-  const hours = Math.floor(seconds / 3600);
-  if (hours > 0) return `${hours}h ago`;
-  return 'now';
-};
-
-const getStatus = (idea) => {
-  if (idea.status === 'active') return 'active';
-  if (idea.outcome === 'success_up' || idea.outcome === 'success_down') return 'win';
-  return 'loss';
-};
-
-const getStatusLabel = (idea) => {
-  const status = getStatus(idea);
-  if (status === 'win') return 'Correct';
-  if (status === 'loss') return 'Wrong';
+const getStatusLabel = (status) => {
+  if (status === 'completed') return 'Completed';
+  if (status === 'invalidated') return 'Invalidated';
   return 'Active';
 };
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+const getStatusIcon = (status) => {
+  if (status === 'completed') return <CheckCircle2 />;
+  if (status === 'invalidated') return <XCircle />;
+  return <Zap />;
+};
+
+const formatPattern = (pattern) => {
+  if (!pattern) return 'Unknown';
+  return pattern.replace(/_/g, ' ');
+};
 
 // ============================================
 // MAIN COMPONENT
 // ============================================
 
-const IdeasView = () => {
+const IdeasView = ({ onNavigateToChart }) => {
   const [ideas, setIdeas] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [deletingId, setDeletingId] = useState(null);
+  const { setSymbol, setTimeframe } = useMarket();
 
-  // Fetch ideas
-  const fetchIdeas = useCallback(async () => {
+  // Fetch ideas from real API
+  const loadIdeas = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/ta/ideas?full=true`);
-      if (res.ok) {
-        const data = await res.json();
-        const rawItems = data.ideas || data.items || [];
-        if (rawItems.length > 0) {
-          setIdeas(rawItems);
-          setLoading(false);
-          return;
-        }
+      let items = await fetchIdeasAPI();
+      
+      // Auto-seed if DB is empty (first time)
+      if (items.length === 0) {
+        await seedIdeasAPI();
+        items = await fetchIdeasAPI();
       }
-      setIdeas(MOCK_IDEAS);
+      
+      setIdeas(items);
     } catch (err) {
       console.error('Failed to fetch ideas:', err);
-      setIdeas(MOCK_IDEAS);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchIdeas(); }, [fetchIdeas]);
+  useEffect(() => { loadIdeas(); }, [loadIdeas]);
+
+  // Delete idea
+  const handleDelete = useCallback(async (ideaId) => {
+    if (deletingId) return;
+    setDeletingId(ideaId);
+    try {
+      await deleteIdeaAPI(ideaId);
+      setIdeas(prev => prev.filter(i => i.idea_id !== ideaId));
+    } catch (err) {
+      console.error('Failed to delete idea:', err);
+      setError(`Failed to delete: ${err.message}`);
+    } finally {
+      setDeletingId(null);
+    }
+  }, [deletingId]);
+
+  // Navigate to chart
+  const handleViewInChart = useCallback((asset, timeframe) => {
+    // Set market context to this idea's asset/timeframe
+    setSymbol(asset);
+    setTimeframe(timeframe.toLowerCase());
+    // Switch to research tab
+    if (onNavigateToChart) {
+      onNavigateToChart(asset, timeframe);
+    }
+  }, [setSymbol, setTimeframe, onNavigateToChart]);
 
   // Filter ideas
   const filteredIdeas = useMemo(() => {
     return ideas.filter(idea => {
       if (filter === 'active') return idea.status === 'active';
-      if (filter === 'win') return idea.outcome === 'success_up' || idea.outcome === 'success_down';
-      if (filter === 'loss') return idea.outcome === 'invalidated';
+      if (filter === 'completed') return idea.status === 'completed';
+      if (filter === 'invalidated') return idea.status === 'invalidated';
       return true;
     });
   }, [ideas, filter]);
 
   // Stats
   const stats = useMemo(() => {
-    const wins = ideas.filter(i => i.outcome === 'success_up' || i.outcome === 'success_down').length;
-    const losses = ideas.filter(i => i.outcome === 'invalidated').length;
-    const total = wins + losses;
-    const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
-    return { wins, losses, winRate, active: ideas.filter(i => i.status === 'active').length };
+    const completed = ideas.filter(i => i.status === 'completed').length;
+    const invalidated = ideas.filter(i => i.status === 'invalidated').length;
+    const active = ideas.filter(i => i.status === 'active').length;
+    return { completed, invalidated, active };
   }, [ideas]);
+
+  if (loading) {
+    return (
+      <Container data-testid="ideas-view">
+        <LoadingState>
+          <Loader2 />
+          <p>Loading ideas...</p>
+        </LoadingState>
+      </Container>
+    );
+  }
 
   return (
     <Container data-testid="ideas-view">
@@ -534,37 +577,68 @@ const IdeasView = () => {
         </Title>
         
         <Controls>
-          <FilterBtn $active={filter === 'all'} onClick={() => setFilter('all')}>
+          <FilterBtn 
+            $active={filter === 'all'} 
+            onClick={() => setFilter('all')}
+            data-testid="filter-all"
+          >
             All ({ideas.length})
           </FilterBtn>
-          <FilterBtn $active={filter === 'active'} onClick={() => setFilter('active')}>
+          <FilterBtn 
+            $active={filter === 'active'} 
+            onClick={() => setFilter('active')}
+            data-testid="filter-active"
+          >
             <Zap size={12} /> Active ({stats.active})
           </FilterBtn>
-          <FilterBtn $active={filter === 'win'} onClick={() => setFilter('win')}>
-            <CheckCircle2 size={12} /> Win ({stats.wins})
+          <FilterBtn 
+            $active={filter === 'completed'} 
+            onClick={() => setFilter('completed')}
+            data-testid="filter-completed"
+          >
+            <CheckCircle2 size={12} /> Completed ({stats.completed})
           </FilterBtn>
-          <FilterBtn $active={filter === 'loss'} onClick={() => setFilter('loss')}>
-            <XCircle size={12} /> Loss ({stats.losses})
+          <FilterBtn 
+            $active={filter === 'invalidated'} 
+            onClick={() => setFilter('invalidated')}
+            data-testid="filter-invalidated"
+          >
+            <XCircle size={12} /> Invalidated ({stats.invalidated})
           </FilterBtn>
-          <RefreshBtn onClick={fetchIdeas} disabled={loading}>
+          <RefreshBtn 
+            onClick={loadIdeas} 
+            disabled={loading}
+            className={loading ? 'spinning' : ''}
+            data-testid="refresh-btn"
+          >
             <RefreshCw />
           </RefreshBtn>
         </Controls>
       </Header>
 
+      {error && (
+        <ErrorBanner data-testid="error-banner">
+          <AlertCircle />
+          {error}
+        </ErrorBanner>
+      )}
+
       {filteredIdeas.length === 0 ? (
-        <EmptyState>
+        <EmptyState data-testid="empty-state">
           <Bookmark />
           <h4>No saved ideas</h4>
-          <p>Save patterns from the analysis tabs to track their evolution over time</p>
+          <p>Save patterns from the Research tab to track their evolution over time</p>
         </EmptyState>
       ) : (
-        <IdeasList>
+        <IdeasList data-testid="ideas-list">
           {filteredIdeas.map(idea => {
-            const status = getStatus(idea);
-            const firstVersion = idea.versions[0];
-            const lastVersion = idea.versions[idea.versions.length - 1];
-            const hasEvolution = idea.versions.length > 1;
+            const versions = idea.versions || [];
+            const lastVersion = versions[versions.length - 1];
+            const lastSnapshot = lastVersion?.setup_snapshot || {};
+            const lastProb = lastSnapshot.probability || {};
+            const lastLevels = lastSnapshot.levels || {};
+            const validations = idea.validations || [];
+            const lastValidation = validations[validations.length - 1];
             
             return (
               <IdeaCard key={idea.idea_id} data-testid={`idea-card-${idea.idea_id}`}>
@@ -576,47 +650,48 @@ const IdeasView = () => {
                     </AssetBadge>
                   </AssetInfo>
                   
-                  <StatusBadge $status={status}>
-                    {status === 'win' && <CheckCircle2 />}
-                    {status === 'loss' && <XCircle />}
-                    {status === 'active' && <Zap />}
-                    {getStatusLabel(idea)}
+                  <StatusBadge $status={idea.status} data-testid={`status-${idea.idea_id}`}>
+                    {getStatusIcon(idea.status)}
+                    {getStatusLabel(idea.status)}
                   </StatusBadge>
                 </IdeaHeader>
                 
-                {/* Evolution Timeline — THE MAIN VISUAL */}
-                <EvolutionTimeline>
-                  {idea.versions.map((version, idx) => {
-                    const isActive = idx === idea.versions.length - 1;
+                {/* Evolution Timeline */}
+                <EvolutionTimeline data-testid={`timeline-${idea.idea_id}`}>
+                  {versions.map((version, idx) => {
+                    const isActive = idx === versions.length - 1;
                     const isFirst = idx === 0;
-                    const isLast = idx === idea.versions.length - 1;
-                    const position = isFirst && isLast ? 'single' : isFirst ? 'first' : isLast ? 'last' : 'middle';
+                    const isLast = idx === versions.length - 1;
+                    const isSingle = versions.length === 1;
+                    const position = isSingle ? 'single' : isFirst ? 'first' : isLast ? 'last' : 'middle';
+                    const snap = version.setup_snapshot || {};
+                    const conf = snap.confidence || version.confidence || 0;
                     
                     return (
-                      <React.Fragment key={version.v}>
+                      <React.Fragment key={version.version}>
                         <VersionBlock 
                           $active={isActive} 
                           $position={position === 'single' ? 'first' : position}
-                          style={position === 'single' ? { borderRadius: '12px' } : {}}
+                          style={isSingle ? { borderRadius: '12px' } : {}}
                         >
                           <VersionLabel $active={isActive}>
-                            {isActive ? 'Current' : `V${version.v}`}
+                            {isActive && versions.length > 1 ? 'Current' : `V${version.version}`}
                           </VersionLabel>
                           <PatternName>
-                            {version.snapshot.pattern}
+                            {formatPattern(snap.pattern)}
                           </PatternName>
-                          <PatternMeta $confidence={version.snapshot.confidence}>
+                          <PatternMeta $confidence={conf}>
                             <span className="confidence">
-                              {Math.round(version.snapshot.confidence * 100)}%
+                              {Math.round(conf * 100)}%
                             </span>
-                            {' '}confidence • {version.snapshot.bias}
+                            {' '}confidence{version.technical_bias ? ` \u2022 ${version.technical_bias}` : ''}
                           </PatternMeta>
                           <VersionDate>
-                            {formatDate(version.timestamp)}
+                            {version.price_at_creation > 0 && `$${version.price_at_creation.toLocaleString()} \u2022 `}{formatDate(version.timestamp)}
                           </VersionDate>
                         </VersionBlock>
                         
-                        {idx < idea.versions.length - 1 && (
+                        {idx < versions.length - 1 && (
                           <TransitionArrow>
                             <ArrowRight />
                           </TransitionArrow>
@@ -626,43 +701,85 @@ const IdeasView = () => {
                   })}
                 </EvolutionTimeline>
                 
+                {/* Interpretation from latest version */}
+                {lastSnapshot.interpretation && (
+                  <InterpretationRow data-testid={`interpretation-${idea.idea_id}`}>
+                    {lastSnapshot.interpretation}
+                  </InterpretationRow>
+                )}
+                
+                {/* Validation result */}
+                {lastValidation && (
+                  <ValidationRow 
+                    $result={lastValidation.result} 
+                    $pnl={lastValidation.price_change_pct}
+                    data-testid={`validation-${idea.idea_id}`}
+                  >
+                    <span className="val-label">
+                      {lastValidation.result === 'correct' ? 'Correct' : 
+                       lastValidation.result === 'invalidated' ? 'Invalidated' : lastValidation.result}
+                    </span>
+                    <span className="val-price">
+                      Price: ${lastValidation.price_at_validation?.toLocaleString()}
+                    </span>
+                    <span className="val-pnl">
+                      {lastValidation.price_change_pct > 0 ? '+' : ''}{lastValidation.price_change_pct?.toFixed(1)}%
+                    </span>
+                    {lastValidation.notes && <span>{lastValidation.notes}</span>}
+                  </ValidationRow>
+                )}
+                
                 {/* Details */}
                 <DetailsRow>
                   <DetailBlock>
                     <div className="label">Breakout Prob</div>
-                    <div className={`value ${lastVersion.snapshot.probability.up > 0.6 ? 'positive' : 'neutral'}`}>
-                      {Math.round(lastVersion.snapshot.probability.up * 100)}%
+                    <div className={`value ${(lastProb.up || 0) > 0.6 ? 'positive' : 'neutral'}`}>
+                      {Math.round((lastProb.up || 0) * 100)}%
                     </div>
                   </DetailBlock>
                   
                   <DetailBlock>
                     <div className="label">Breakdown Prob</div>
-                    <div className={`value ${lastVersion.snapshot.probability.down > 0.6 ? 'negative' : 'neutral'}`}>
-                      {Math.round(lastVersion.snapshot.probability.down * 100)}%
+                    <div className={`value ${(lastProb.down || 0) > 0.6 ? 'negative' : 'neutral'}`}>
+                      {Math.round((lastProb.down || 0) * 100)}%
                     </div>
                   </DetailBlock>
                   
                   <DetailBlock>
                     <div className="label">Key Levels</div>
                     <div className="value">
-                      {lastVersion.snapshot.levels.top?.toLocaleString()} / {lastVersion.snapshot.levels.bottom?.toLocaleString()}
+                      {lastLevels.top?.toLocaleString() || '—'} / {lastLevels.bottom?.toLocaleString() || '—'}
                     </div>
                   </DetailBlock>
                   
                   <DetailBlock>
-                    <div className="label">Score</div>
-                    <div className={`value ${idea.score > 0 ? 'positive' : idea.score < 0 ? 'negative' : 'neutral'}`}>
-                      {idea.score > 0 ? `+${idea.score}` : idea.score < 0 ? idea.score : '—'}
+                    <div className="label">Accuracy</div>
+                    <div className={`value ${
+                      idea.accuracy_score > 0.5 ? 'positive' : 
+                      idea.accuracy_score === 0 ? 'negative' : 'neutral'
+                    }`}>
+                      {idea.accuracy_score != null 
+                        ? `${Math.round(idea.accuracy_score * 100)}%` 
+                        : '—'}
                     </div>
                   </DetailBlock>
                 </DetailsRow>
                 
                 <IdeaActions>
-                  <ActionBtn>
+                  <ActionBtn 
+                    onClick={() => handleViewInChart(idea.asset, idea.timeframe)}
+                    data-testid={`view-chart-${idea.idea_id}`}
+                  >
                     <ExternalLink /> View in Chart
                   </ActionBtn>
-                  <ActionBtn className="danger">
-                    <Trash2 /> Remove
+                  <ActionBtn 
+                    className="danger"
+                    onClick={() => handleDelete(idea.idea_id)}
+                    disabled={deletingId === idea.idea_id}
+                    data-testid={`delete-${idea.idea_id}`}
+                  >
+                    {deletingId === idea.idea_id ? <Loader2 /> : <Trash2 />}
+                    {deletingId === idea.idea_id ? 'Deleting...' : 'Remove'}
                   </ActionBtn>
                 </IdeaActions>
               </IdeaCard>

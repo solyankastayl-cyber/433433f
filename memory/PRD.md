@@ -129,7 +129,17 @@
 - **Built text-only IdeasView** with evolution timeline (V1 → V2), pattern tracking, probabilities, key levels, scores
 - **Deleted dead code**: `IdeaChart.jsx`, `IdeaChartOverlay.jsx`
 - **Fixed tab order**: Research → Structure → Signals → Execution → Deep → Ideas | Hypotheses (separator between Ideas and Hypotheses)
-- **Mock data**: 3 ideas (BTC rectangle→triangle, ETH ascending triangle, SOL head&shoulders→double top)
+
+### April 1, 2026 - Ideas: Full Backend Integration (No Mocks)
+- **Real API integration**: Fetches ideas from `GET /api/ta/ideas?full=true`, no mock data fallback
+- **View in Chart**: Navigates to Research tab, sets symbol/timeframe via MarketProvider context
+- **Remove**: Calls `DELETE /api/ta/ideas/{id}`, removes from MongoDB, updates UI state
+- **Auto-seed**: If DB is empty on first load, calls `POST /api/ta/ideas/seed` to populate 5 demo ideas
+- **Filters**: All/Active/Completed/Invalidated — real-time counts from API data
+- **Validation display**: Shows validation result (Correct/Invalidated), price, PnL%, notes
+- **Interpretation**: Shows pattern interpretation from setup_snapshot
+- **Accuracy tracking**: Shows accuracy percentage from backend calculations
+- **Backend endpoints used**: GET /api/ta/ideas, DELETE /api/ta/ideas/{id}, POST /api/ta/ideas/seed
 
 ## Next Tasks
 1. Monitor user feedback on Ideas text-only layout

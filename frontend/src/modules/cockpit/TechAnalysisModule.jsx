@@ -278,7 +278,9 @@ const TechAnalysisInner = () => {
         )}
         
         {/* Ideas — text-only evolution tracker */}
-        {activeTab === 'ideas' && <IdeasView />}
+        {activeTab === 'ideas' && <IdeasView onNavigateToChart={(asset, tf) => {
+          setActiveTab('research');
+        }} />}
         
         {/* Hypotheses — separate view */}
         {activeTab === 'hypotheses' && <HypothesesView />}
