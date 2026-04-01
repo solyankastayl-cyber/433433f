@@ -83,14 +83,10 @@
   - IdeaChart height 400px for symmetry with left panel
   - Both panels balanced in height
 
-## Testing Status (iteration_17)
-- ✅ Frontend: 95%
-- ✅ Ideas Graph-First UI: 100%
-- ✅ Horizontal Idea Selector Strip: 100%
-- ✅ Full-width Graph: 100%
-- ✅ 6-Section Bottom Panel: 100%
-- ✅ Dark Theme (#0B0F14): 100%
-- ✅ Replay/Version Toggle: 100%
+## Testing Status (iteration_18)
+- ✅ Frontend: 100%
+- ✅ Light Theme: 100%
+- ✅ Overlay Synchronization: 100%
 
 ## Prioritized Backlog
 
@@ -110,8 +106,11 @@
     - What Next (рекомендації)
     - Result/Score (+1/-1)
     - Version Timeline (V1/V2/Replay)
-  - Темна тема (#0B0F14 background)
   - Chart Mode Toggle (Idea/Performance)
+- ✅ **LIGHT THEME + OVERLAY SYNC** (April 1, 2026)
+  - Повернено світлу тему (білий фон #ffffff, сірі акценти #f8fafc)
+  - Overlay (трикутник) синхронізований з графіком - рухається разом при pan/zoom
+  - Додано subscribeVisibleTimeRangeChange для перемальовування overlay
 
 ### P1 (Completed - March 31, 2026)
 - ✅ **WebSocket for real-time chart updates** - `/api/ws/market` endpoint with ConnectionManager
