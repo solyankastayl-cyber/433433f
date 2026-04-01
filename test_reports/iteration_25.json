@@ -1,0 +1,36 @@
+{
+  "summary": "P2 Decision Engine testing completed successfully. All core functionality verified including stability scoring, regime calibration, anti-overconfidence, filtering, and ranking v2.0. System performing exactly as expected with trend=100% valid, range=0% valid, and overall 63% valid rate.",
+  "backend_issues": {
+    "critical_bugs": [],
+    "flaky_endpoints": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "Scanner Health Check - Service running correctly",
+    "Debug BTC - All P2 fields present (stability, valid, score, rejection_reason)",
+    "Stability Score Range (0-1) - All scores within valid range",
+    "Anti-Overconfidence (confidence < 90%) - Confidence properly capped",
+    "Score is Numeric - Score field has correct type",
+    "Valid is Boolean - Valid field has correct type", 
+    "Full Scan with P2 Engine - Full scan execution working",
+    "Top Predictions - Valid Only - Only valid predictions returned",
+    "Logs Summary Stats - Summary statistics available",
+    "Regime Behavior - Trend > Range Valid% - Trend regime outperforms range",
+    "Stability Score Range Test - All stability scores in 0-1 range",
+    "Confidence Cap Enforcement - No predictions exceed 90% confidence",
+    "Expected Valid Rate (~67%) - Actual rate 63% within tolerance"
+  ],
+  "test_report_links": ["/app/backend_test.py"],
+  "action_item_for_main_agent": "",
+  "updated_files": ["/app/backend_test.py"],
+  "success_percentage": {
+    "backend": "100%",
+    "frontend": "N/A - Backend only testing"
+  },
+  "should_call_test_agent_after_fix": "false",
+  "should_main_agent_test_itself": "false"
+}

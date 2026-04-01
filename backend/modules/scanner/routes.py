@@ -159,9 +159,24 @@ async def get_latest_predictions(
 
 @router.get("/predictions/top")
 async def get_top_predictions(limit: int = 20):
-    """Get top ranked publishable predictions."""
+    """Get top ranked valid predictions (Decision Engine filtered)."""
     worker = get_prediction_scan_worker()
     predictions = worker.get_top_predictions(limit=limit)
+    
+    return {
+        "count": len(predictions),
+        "predictions": predictions,
+    }
+
+
+@router.get("/predictions/all")
+async def get_all_predictions(limit: int = 50, valid_only: bool = False):
+    """Get all latest predictions (including invalid for analysis)."""
+    worker = get_prediction_scan_worker()
+    predictions = worker.get_latest_predictions_batch(
+        limit=limit,
+        valid_only=valid_only
+    )
     
     return {
         "count": len(predictions),

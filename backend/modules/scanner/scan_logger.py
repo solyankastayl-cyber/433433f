@@ -68,10 +68,16 @@ def log_scan_result(
         "expected_return": round(
             prediction.get("scenarios", {}).get("base", {}).get("expected_return", 0), 4
         ),
-        # Regime (NEW)
+        # Regime
         "regime": prediction.get("regime", "unknown"),
         "regime_conf": round(prediction.get("regime_confidence", 0), 2),
         "model": prediction.get("model", "unknown"),
+        # P2: Decision Engine fields
+        "stability": round(prediction.get("stability", 0), 3),
+        "stability_label": prediction.get("stability_label", "?"),
+        "valid": prediction.get("valid", False),
+        "score": round(prediction.get("score", 0), 4),
+        "rejection_reason": prediction.get("rejection_reason"),
         # Meta
         "ta_source": ta_payload.get("_ta_source", "unknown"),
         "ta_regime": ta_payload.get("_ta_layers_regime", "unknown"),
@@ -121,12 +127,12 @@ def get_logs_summary() -> Dict[str, Any]:
     
     Returns:
         - total_scans
-        - unique_symbols
+        - valid/invalid counts (P2)
         - direction_distribution
         - pattern_distribution
-        - regime_distribution (NEW)
-        - avg_confidence
-        - metrics_by_regime (NEW)
+        - regime_distribution
+        - avg_confidence, avg_stability (P2)
+        - metrics_by_regime
     """
     logs = get_recent_logs(limit=500)
     
@@ -138,9 +144,15 @@ def get_logs_summary() -> Dict[str, Any]:
     pattern_counts = {}
     regime_counts = {}
     confidences = []
+    stabilities = []
     symbols = set()
     
-    # Metrics by regime (NEW)
+    # P2: valid/invalid tracking
+    valid_count = 0
+    invalid_count = 0
+    rejection_reasons = {}
+    
+    # Metrics by regime
     regime_metrics = {}
     
     for log in logs:
@@ -159,6 +171,19 @@ def get_logs_summary() -> Dict[str, Any]:
         if conf > 0:
             confidences.append(conf)
         
+        stability = log.get("stability", 0)
+        if stability > 0:
+            stabilities.append(stability)
+        
+        # P2: valid tracking
+        if log.get("valid", False):
+            valid_count += 1
+        else:
+            invalid_count += 1
+            reason = log.get("rejection_reason")
+            if reason:
+                rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
+        
         # Aggregate by regime
         if regime not in regime_metrics:
             regime_metrics[regime] = {
@@ -166,28 +191,45 @@ def get_logs_summary() -> Dict[str, Any]:
                 "bullish": 0,
                 "bearish": 0,
                 "neutral": 0,
+                "valid": 0,
                 "confidence_sum": 0,
+                "stability_sum": 0,
             }
         rm = regime_metrics[regime]
         rm["count"] += 1
         rm[pred_dir] = rm.get(pred_dir, 0) + 1
         rm["confidence_sum"] += conf
+        rm["stability_sum"] += stability
+        if log.get("valid"):
+            rm["valid"] += 1
     
     # Compute regime-level stats
     for regime, rm in regime_metrics.items():
         rm["avg_confidence"] = round(rm["confidence_sum"] / rm["count"], 3) if rm["count"] > 0 else 0
+        rm["avg_stability"] = round(rm["stability_sum"] / rm["count"], 3) if rm["count"] > 0 else 0
+        rm["valid_pct"] = round(rm["valid"] / rm["count"], 2) if rm["count"] > 0 else 0
         rm["bullish_pct"] = round(rm["bullish"] / rm["count"], 2) if rm["count"] > 0 else 0
         rm["bearish_pct"] = round(rm["bearish"] / rm["count"], 2) if rm["count"] > 0 else 0
         del rm["confidence_sum"]
+        del rm["stability_sum"]
     
     return {
         "total_scans": len(logs),
         "unique_symbols": len(symbols),
+        # P2: Decision Engine stats
+        "valid_predictions": valid_count,
+        "invalid_predictions": invalid_count,
+        "valid_rate": round(valid_count / len(logs), 2) if logs else 0,
+        "rejection_reasons": rejection_reasons,
+        # Distributions
         "direction_distribution": dir_counts,
         "pattern_distribution": pattern_counts,
         "regime_distribution": regime_counts,
         "metrics_by_regime": regime_metrics,
+        # Averages
         "avg_confidence": round(sum(confidences) / len(confidences), 3) if confidences else 0,
+        "avg_stability": round(sum(stabilities) / len(stabilities), 3) if stabilities else 0,
+        # Bias checks
         "always_bullish": dir_counts.get("bearish", 0) == 0 and dir_counts.get("bullish", 0) > 0,
         "always_bearish": dir_counts.get("bullish", 0) == 0 and dir_counts.get("bearish", 0) > 0,
     }

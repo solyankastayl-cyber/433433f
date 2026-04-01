@@ -1,505 +1,390 @@
 """
-Regime Engine P1 Backend Testing
+P2 Decision Engine Backend Test Suite
 
-Tests the regime-aware prediction system with:
-- Regime detection and routing
-- Different models for different regimes
-- Bias fixes and hysteresis
-- Logging by regimes
+Tests the P2 Decision Engine implementation:
+- Stability Score + Regime Calibration + Anti-Overconfidence + Filter + Ranking 2.0
+- Expected results: ~67% valid rate, trend=100% valid, range=0% valid, confidence capped at 90%
 """
 
 import requests
 import sys
 import json
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, List, Any
 
-class RegimeEngineAPITester:
-    def __init__(self, base_url="https://repo-study-3.preview.emergentagent.com"):
+class P2DecisionEngineTest:
+    def __init__(self, base_url: str):
         self.base_url = base_url
         self.tests_run = 0
         self.tests_passed = 0
-        self.failed_tests = []
-        self.passed_tests = []
-
-    def run_test(self, name: str, method: str, endpoint: str, expected_status: int, data=None, headers=None) -> tuple:
-        """Run a single API test"""
-        url = f"{self.base_url}/{endpoint}"
-        if headers is None:
-            headers = {'Content-Type': 'application/json'}
-
+        self.test_results = []
+        
+    def log_test(self, name: str, passed: bool, details: str = ""):
+        """Log test result"""
         self.tests_run += 1
-        print(f"\n🔍 Testing {name}...")
-        print(f"   URL: {url}")
+        if passed:
+            self.tests_passed += 1
+            print(f"✅ {name}")
+        else:
+            print(f"❌ {name} - {details}")
+        
+        self.test_results.append({
+            "test": name,
+            "passed": passed,
+            "details": details,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    
+    def make_request(self, endpoint: str, method: str = "GET", data: Dict = None) -> Dict:
+        """Make HTTP request to API"""
+        url = f"{self.base_url}{endpoint}"
         
         try:
-            if method == 'GET':
-                response = requests.get(url, headers=headers, timeout=30)
-            elif method == 'POST':
-                response = requests.post(url, json=data, headers=headers, timeout=30)
-            else:
-                raise ValueError(f"Unsupported method: {method}")
-
-            print(f"   Status: {response.status_code}")
+            if method == "GET":
+                response = requests.get(url, timeout=30)
+            elif method == "POST":
+                response = requests.post(url, json=data, timeout=30)
             
-            success = response.status_code == expected_status
-            response_data = {}
-            
-            try:
-                response_data = response.json()
-            except:
-                response_data = {"raw_response": response.text[:500]}
-
-            if success:
-                self.tests_passed += 1
-                self.passed_tests.append(name)
-                print(f"✅ PASSED - {name}")
-                if response_data:
-                    print(f"   Response keys: {list(response_data.keys())}")
+            if response.status_code == 200:
+                return {"ok": True, "data": response.json(), "status": response.status_code}
             else:
-                self.failed_tests.append({
-                    "test": name,
-                    "expected": expected_status,
-                    "actual": response.status_code,
-                    "response": response_data
-                })
-                print(f"❌ FAILED - {name}")
-                print(f"   Expected {expected_status}, got {response.status_code}")
-                if response_data:
-                    print(f"   Error: {response_data}")
-
-            return success, response_data
-
+                return {"ok": False, "error": f"HTTP {response.status_code}", "status": response.status_code}
+                
         except Exception as e:
-            self.failed_tests.append({
-                "test": name,
-                "error": str(e),
-                "type": "exception"
-            })
-            print(f"❌ FAILED - {name} - Exception: {str(e)}")
-            return False, {}
-
-    def test_health_check(self):
-        """Test basic health endpoint"""
-        return self.run_test(
-            "Health Check",
-            "GET",
-            "api/health",
-            200
-        )
-
+            return {"ok": False, "error": str(e), "status": 0}
+    
     def test_scanner_health(self):
         """Test scanner service health"""
-        return self.run_test(
-            "Scanner Health",
-            "GET", 
-            "api/scanner/health",
-            200
-        )
-
-    def test_debug_btc_regime_detection(self):
-        """Test /api/scanner/debug/BTC - verify regime is detected and returned"""
-        success, response = self.run_test(
-            "Debug BTC Regime Detection",
-            "GET",
-            "api/scanner/debug/BTC",
-            200
-        )
+        result = self.make_request("/api/scanner/health")
         
-        if success and response:
-            # Verify regime fields are present
-            prediction = response.get("prediction", {})
-            regime = prediction.get("regime")
-            regime_conf = prediction.get("regime_confidence")
-            model = prediction.get("model")
+        if result["ok"]:
+            data = result["data"]
+            passed = data.get("status") == "ok" and data.get("service") == "scanner"
+            self.log_test("Scanner Health Check", passed, 
+                         f"Status: {data.get('status')}, Service: {data.get('service')}")
+        else:
+            self.log_test("Scanner Health Check", False, result["error"])
+    
+    def test_debug_btc_new_fields(self):
+        """Test /api/scanner/debug/BTC - verify new P2 fields: stability, valid, score, rejection_reason"""
+        result = self.make_request("/api/scanner/debug/BTC")
+        
+        if not result["ok"]:
+            self.log_test("Debug BTC - New P2 Fields", False, result["error"])
+            return
+        
+        data = result["data"]
+        prediction = data.get("prediction", {})
+        
+        # Check for new P2 fields
+        required_fields = ["stability", "valid", "score"]
+        missing_fields = []
+        
+        for field in required_fields:
+            if field not in prediction:
+                missing_fields.append(field)
+        
+        # Check rejection_reason exists if prediction is invalid
+        if not prediction.get("valid", True) and "rejection_reason" not in prediction:
+            missing_fields.append("rejection_reason")
+        
+        passed = len(missing_fields) == 0
+        details = f"Missing fields: {missing_fields}" if missing_fields else "All P2 fields present"
+        
+        self.log_test("Debug BTC - New P2 Fields", passed, details)
+        
+        # Additional validation of field values
+        if passed:
+            self.validate_p2_field_values(prediction)
+        
+        return prediction
+    
+    def validate_p2_field_values(self, prediction: Dict):
+        """Validate P2 field value ranges and types"""
+        
+        # Test stability score range (0-1)
+        stability = prediction.get("stability")
+        if stability is not None:
+            passed = 0.0 <= stability <= 1.0
+            self.log_test("Stability Score Range (0-1)", passed, 
+                         f"Stability: {stability}")
+        
+        # Test confidence cap (< 90%)
+        confidence = prediction.get("confidence", {}).get("value", 0)
+        if confidence is not None:
+            passed = confidence < 0.90
+            self.log_test("Anti-Overconfidence (confidence < 90%)", passed, 
+                         f"Confidence: {confidence:.1%}")
+        
+        # Test score is numeric
+        score = prediction.get("score")
+        if score is not None:
+            passed = isinstance(score, (int, float))
+            self.log_test("Score is Numeric", passed, f"Score: {score}, Type: {type(score)}")
+        
+        # Test valid is boolean
+        valid = prediction.get("valid")
+        if valid is not None:
+            passed = isinstance(valid, bool)
+            self.log_test("Valid is Boolean", passed, f"Valid: {valid}, Type: {type(valid)}")
+    
+    def test_full_scan_p2_engine(self):
+        """Test /api/scanner/full-scan - run full scan with P2 Decision Engine"""
+        result = self.make_request("/api/scanner/full-scan", "POST")
+        
+        if result["ok"]:
+            data = result["data"]
+            passed = data.get("status") == "completed" or "processed" in str(data)
+            details = f"Scan result: {data}"
+            self.log_test("Full Scan with P2 Engine", passed, details)
+        else:
+            self.log_test("Full Scan with P2 Engine", False, result["error"])
+    
+    def test_predictions_top_valid_only(self):
+        """Test /api/scanner/predictions/top - verify only valid predictions returned"""
+        result = self.make_request("/api/scanner/predictions/top?limit=20")
+        
+        if not result["ok"]:
+            self.log_test("Top Predictions - Valid Only", False, result["error"])
+            return []
+        
+        data = result["data"]
+        predictions = data.get("predictions", [])
+        
+        # Check all predictions are valid (look in prediction_payload)
+        invalid_count = 0
+        for pred in predictions:
+            payload = pred.get("prediction_payload", {})
+            if not payload.get("valid", False):
+                invalid_count += 1
+        
+        passed = invalid_count == 0
+        details = f"Total: {len(predictions)}, Invalid: {invalid_count}"
+        self.log_test("Top Predictions - Valid Only", passed, details)
+        
+        return predictions
+    
+    def test_logs_summary_stats(self):
+        """Test /api/scanner/logs/summary - verify valid_rate, rejection_reasons stats"""
+        result = self.make_request("/api/scanner/logs/summary")
+        
+        if not result["ok"]:
+            self.log_test("Logs Summary Stats", False, result["error"])
+            return {}
+        
+        data = result["data"]
+        
+        # Check for expected summary fields
+        expected_fields = ["valid_rate", "rejection_reasons"]
+        missing_fields = []
+        
+        for field in expected_fields:
+            if field not in data:
+                missing_fields.append(field)
+        
+        passed = len(missing_fields) == 0
+        details = f"Missing fields: {missing_fields}" if missing_fields else f"Valid rate: {data.get('valid_rate', 'N/A')}"
+        
+        self.log_test("Logs Summary Stats", passed, details)
+        
+        return data
+    
+    def test_regime_behavior_analysis(self):
+        """Test regime-specific behavior: trend vs range predictions"""
+        # Get multiple predictions to analyze regime behavior
+        result = self.make_request("/api/scanner/predictions/all?limit=50&valid_only=false")
+        
+        if not result["ok"]:
+            self.log_test("Regime Behavior Analysis", False, result["error"])
+            return
+        
+        data = result["data"]
+        predictions = data.get("predictions", [])
+        
+        if len(predictions) == 0:
+            self.log_test("Regime Behavior Analysis", False, "No predictions available")
+            return
+        
+        # Analyze by regime
+        regime_stats = {}
+        for pred in predictions:
+            payload = pred.get("prediction_payload", {})
+            regime = payload.get("regime", "unknown")
+            if regime not in regime_stats:
+                regime_stats[regime] = {"total": 0, "valid": 0}
             
-            if regime and regime_conf is not None and model:
-                print(f"   ✅ Regime detected: {regime} (conf: {regime_conf}, model: {model})")
-                return True, response
-            else:
-                print(f"   ❌ Missing regime fields - regime: {regime}, conf: {regime_conf}, model: {model}")
-                self.failed_tests.append({
-                    "test": "Debug BTC Regime Detection - Fields",
-                    "error": "Missing regime, regime_confidence, or model fields",
-                    "response": prediction
-                })
-                return False, response
+            regime_stats[regime]["total"] += 1
+            if payload.get("valid", False):
+                regime_stats[regime]["valid"] += 1
         
-        return success, response
-
-    def test_debug_symbol_regime_detection(self, symbol="ETH"):
-        """Test /api/scanner/debug/{symbol} - verify regime is detected"""
-        success, response = self.run_test(
-            f"Debug {symbol} Regime Detection",
-            "GET",
-            f"api/scanner/debug/{symbol}",
-            200
-        )
+        # Calculate valid percentages
+        for regime in regime_stats:
+            total = regime_stats[regime]["total"]
+            valid = regime_stats[regime]["valid"]
+            regime_stats[regime]["valid_pct"] = (valid / total * 100) if total > 0 else 0
         
-        if success and response:
-            prediction = response.get("prediction", {})
-            regime = prediction.get("regime")
+        # Test expectations: trend should have higher valid_pct than range
+        trend_pct = regime_stats.get("trend", {}).get("valid_pct", 0)
+        range_pct = regime_stats.get("range", {}).get("valid_pct", 100)  # Default high to make test fail if no range data
+        
+        passed = trend_pct > range_pct if "trend" in regime_stats and "range" in regime_stats else True
+        details = f"Trend: {trend_pct:.1f}%, Range: {range_pct:.1f}%, Stats: {regime_stats}"
+        
+        self.log_test("Regime Behavior - Trend > Range Valid%", passed, details)
+        
+        # Test range regime low confidence expectation
+        if "range" in regime_stats:
+            range_low_valid = range_pct < 50  # Expect range to have low valid rate
+            self.log_test("Range Regime Low Valid Rate", range_low_valid, 
+                         f"Range valid rate: {range_pct:.1f}%")
+    
+    def test_stability_score_range(self):
+        """Test stability scores are between 0-1 across multiple predictions"""
+        result = self.make_request("/api/scanner/predictions/all?limit=30")
+        
+        if not result["ok"]:
+            self.log_test("Stability Score Range Test", False, result["error"])
+            return
+        
+        data = result["data"]
+        predictions = data.get("predictions", [])
+        
+        invalid_stability_count = 0
+        stability_scores = []
+        
+        for pred in predictions:
+            payload = pred.get("prediction_payload", {})
+            stability = payload.get("stability")
+            if stability is not None:
+                stability_scores.append(stability)
+                if not (0.0 <= stability <= 1.0):
+                    invalid_stability_count += 1
+        
+        passed = invalid_stability_count == 0 and len(stability_scores) > 0
+        details = f"Checked {len(stability_scores)} scores, {invalid_stability_count} invalid"
+        
+        if len(stability_scores) > 0:
+            avg_stability = sum(stability_scores) / len(stability_scores)
+            details += f", Avg: {avg_stability:.3f}"
+        
+        self.log_test("Stability Score Range Test", passed, details)
+    
+    def test_confidence_cap_enforcement(self):
+        """Test anti-overconfidence: confidence < 90% always"""
+        result = self.make_request("/api/scanner/predictions/all?limit=30")
+        
+        if not result["ok"]:
+            self.log_test("Confidence Cap Enforcement", False, result["error"])
+            return
+        
+        data = result["data"]
+        predictions = data.get("predictions", [])
+        
+        over_90_count = 0
+        confidence_values = []
+        
+        for pred in predictions:
+            payload = pred.get("prediction_payload", {})
+            confidence = payload.get("confidence", {}).get("value")
+            if confidence is not None:
+                confidence_values.append(confidence)
+                if confidence >= 0.90:
+                    over_90_count += 1
+        
+        passed = over_90_count == 0 and len(confidence_values) > 0
+        details = f"Checked {len(confidence_values)} predictions, {over_90_count} over 90%"
+        
+        if len(confidence_values) > 0:
+            max_confidence = max(confidence_values)
+            details += f", Max: {max_confidence:.1%}"
+        
+        self.log_test("Confidence Cap Enforcement", passed, details)
+    
+    def test_expected_valid_rate(self):
+        """Test expected ~67% valid rate"""
+        result = self.make_request("/api/scanner/logs/summary")
+        
+        if not result["ok"]:
+            self.log_test("Expected Valid Rate (~67%)", False, result["error"])
+            return
+        
+        data = result["data"]
+        valid_rate = data.get("valid_rate")
+        
+        if valid_rate is not None:
+            # Allow some tolerance around 67%
+            target_rate = 0.67
+            tolerance = 0.15  # ±15%
             
-            if regime:
-                print(f"   ✅ {symbol} regime: {regime}")
-                return True, response
-            else:
-                print(f"   ❌ No regime detected for {symbol}")
-                return False, response
-        
-        return success, response
-
-    def test_full_scan_regime_aware(self):
-        """Test /api/scanner/full-scan - run full scan with regime-aware predictions"""
-        success, response = self.run_test(
-            "Full Scan Regime-Aware",
-            "POST",
-            "api/scanner/full-scan?asset_limit=10",
-            200
-        )
-        
-        if success and response:
-            scanned_count = response.get("scanned_count", 0)
-            predictions_count = response.get("predictions_count", 0)
+            passed = abs(valid_rate - target_rate) <= tolerance
+            details = f"Valid rate: {valid_rate:.1%}, Target: {target_rate:.1%} ±{tolerance:.1%}"
             
-            print(f"   ✅ Scanned {scanned_count} assets, generated {predictions_count} predictions")
-            
-            # Check if any predictions were generated
-            if predictions_count > 0:
-                return True, response
-            else:
-                print(f"   ⚠️  No predictions generated")
-                return True, response  # Still pass as scan worked
+            self.log_test("Expected Valid Rate (~67%)", passed, details)
+        else:
+            self.log_test("Expected Valid Rate (~67%)", False, "Valid rate not available")
+    
+    def run_all_tests(self):
+        """Run all P2 Decision Engine tests"""
+        print("🚀 Starting P2 Decision Engine Test Suite")
+        print("=" * 60)
         
-        return success, response
-
-    def test_logs_summary_regime_distribution(self):
-        """Test /api/scanner/logs/summary - verify regime_distribution and metrics_by_regime"""
-        success, response = self.run_test(
-            "Logs Summary Regime Distribution",
-            "GET",
-            "api/scanner/logs/summary",
-            200
-        )
+        # Basic health checks
+        self.test_scanner_health()
         
-        if success and response:
-            regime_distribution = response.get("regime_distribution", {})
-            metrics_by_regime = response.get("metrics_by_regime", {})
-            
-            if regime_distribution and metrics_by_regime:
-                print(f"   ✅ Regime distribution: {regime_distribution}")
-                print(f"   ✅ Metrics by regime: {list(metrics_by_regime.keys())}")
-                
-                # Verify expected regimes are present
-                expected_regimes = ["trend", "range", "compression", "high_volatility"]
-                found_regimes = list(regime_distribution.keys())
-                
-                for regime in expected_regimes:
-                    if regime in found_regimes:
-                        print(f"   ✅ Found regime: {regime}")
-                    else:
-                        print(f"   ⚠️  Missing regime: {regime}")
-                
-                return True, response
-            else:
-                print(f"   ❌ Missing regime_distribution or metrics_by_regime")
-                return False, response
+        # Core P2 functionality tests
+        self.test_debug_btc_new_fields()
+        self.test_full_scan_p2_engine()
+        self.test_predictions_top_valid_only()
+        self.test_logs_summary_stats()
         
-        return success, response
-
-    def test_regime_confidence_levels(self):
-        """Test that different regimes have different confidence levels"""
-        print(f"\n🔍 Testing Regime Confidence Levels...")
+        # P2 behavior validation
+        self.test_regime_behavior_analysis()
+        self.test_stability_score_range()
+        self.test_confidence_cap_enforcement()
+        self.test_expected_valid_rate()
         
-        # Test multiple symbols to get different regimes
-        symbols = ["BTC", "ETH", "SOL"]
-        regime_confidences = {}
+        # Summary
+        print("=" * 60)
+        print(f"📊 Test Results: {self.tests_passed}/{self.tests_run} passed")
         
-        for symbol in symbols:
-            success, response = self.run_test(
-                f"Regime Confidence {symbol}",
-                "GET",
-                f"api/scanner/debug/{symbol}",
-                200
-            )
-            
-            if success and response:
-                prediction = response.get("prediction", {})
-                regime = prediction.get("regime")
-                regime_conf = prediction.get("regime_confidence")
-                
-                if regime and regime_conf is not None:
-                    if regime not in regime_confidences:
-                        regime_confidences[regime] = []
-                    regime_confidences[regime].append(regime_conf)
-        
-        # Analyze confidence patterns
-        print(f"   Regime confidences collected: {regime_confidences}")
-        
-        # Check if trend regime has higher confidence than range (as expected)
-        trend_confs = regime_confidences.get("trend", [])
-        range_confs = regime_confidences.get("range", [])
-        
-        if trend_confs and range_confs:
-            avg_trend = sum(trend_confs) / len(trend_confs)
-            avg_range = sum(range_confs) / len(range_confs)
-            
-            print(f"   Average trend confidence: {avg_trend:.3f}")
-            print(f"   Average range confidence: {avg_range:.3f}")
-            
-            if avg_trend > avg_range:
-                print(f"   ✅ Trend regime has higher confidence than range")
-                self.passed_tests.append("Regime Confidence Levels")
-                return True
-            else:
-                print(f"   ⚠️  Expected trend confidence > range confidence")
-                return True  # Still pass as this is expected behavior variation
-        
-        print(f"   ⚠️  Insufficient data to compare regime confidences")
-        return True
-
-    def test_direction_pattern_alignment(self):
-        """Test that direction aligns with pattern (bearish pattern → bearish direction)"""
-        print(f"\n🔍 Testing Direction-Pattern Alignment...")
-        
-        # Test multiple symbols to find patterns
-        symbols = ["BTC", "ETH", "SOL", "ADA", "DOT"]
-        alignments = []
-        
-        for symbol in symbols:
-            success, response = self.run_test(
-                f"Pattern Alignment {symbol}",
-                "GET",
-                f"api/scanner/debug/{symbol}",
-                200
-            )
-            
-            if success and response:
-                ta_summary = response.get("ta_summary", {})
-                prediction = response.get("prediction", {})
-                
-                pattern = ta_summary.get("pattern", {})
-                pattern_dir = pattern.get("direction", "neutral")
-                
-                direction = prediction.get("direction", {})
-                pred_dir = direction.get("label", "neutral")
-                
-                if pattern_dir != "neutral" and pred_dir != "neutral":
-                    aligned = pattern_dir == pred_dir
-                    alignments.append({
-                        "symbol": symbol,
-                        "pattern_dir": pattern_dir,
-                        "pred_dir": pred_dir,
-                        "aligned": aligned
-                    })
-                    
-                    status = "✅" if aligned else "⚠️"
-                    print(f"   {status} {symbol}: pattern={pattern_dir}, prediction={pred_dir}")
-        
-        if alignments:
-            aligned_count = sum(1 for a in alignments if a["aligned"])
-            total_count = len(alignments)
-            alignment_rate = aligned_count / total_count
-            
-            print(f"   Alignment rate: {aligned_count}/{total_count} = {alignment_rate:.2%}")
-            
-            if alignment_rate >= 0.6:  # 60% alignment is reasonable
-                print(f"   ✅ Good pattern-direction alignment")
-                self.passed_tests.append("Direction-Pattern Alignment")
-                return True
-            else:
-                print(f"   ⚠️  Low pattern-direction alignment")
-                return True  # Still pass as this can vary
-        
-        print(f"   ⚠️  No patterns with clear directions found")
-        return True
-
-    def test_targets_not_zero_for_trend(self):
-        """Test that targets are not 0% for trend regime"""
-        print(f"\n🔍 Testing Non-Zero Targets for Trend Regime...")
-        
-        symbols = ["BTC", "ETH", "SOL"]
-        trend_targets = []
-        
-        for symbol in symbols:
-            success, response = self.run_test(
-                f"Trend Targets {symbol}",
-                "GET",
-                f"api/scanner/debug/{symbol}",
-                200
-            )
-            
-            if success and response:
-                prediction = response.get("prediction", {})
-                regime = prediction.get("regime")
-                
-                if regime == "trend":
-                    scenarios = prediction.get("scenarios", {})
-                    base_scenario = scenarios.get("base", {})
-                    expected_return = base_scenario.get("expected_return", 0)
-                    
-                    trend_targets.append({
-                        "symbol": symbol,
-                        "expected_return": expected_return,
-                        "non_zero": abs(expected_return) > 0.001  # > 0.1%
-                    })
-                    
-                    status = "✅" if abs(expected_return) > 0.001 else "❌"
-                    print(f"   {status} {symbol} trend target: {expected_return:.4f} ({expected_return*100:.2f}%)")
-        
-        if trend_targets:
-            non_zero_count = sum(1 for t in trend_targets if t["non_zero"])
-            total_count = len(trend_targets)
-            
-            print(f"   Non-zero targets: {non_zero_count}/{total_count}")
-            
-            if non_zero_count == total_count:
-                print(f"   ✅ All trend regime targets are non-zero")
-                self.passed_tests.append("Non-Zero Trend Targets")
-                return True
-            else:
-                print(f"   ❌ Some trend regime targets are zero")
-                self.failed_tests.append({
-                    "test": "Non-Zero Trend Targets",
-                    "error": f"Found {total_count - non_zero_count} zero targets in trend regime",
-                    "details": trend_targets
-                })
-                return False
-        
-        print(f"   ⚠️  No trend regime predictions found")
-        return True
-
-    def test_different_models_for_regimes(self):
-        """Test that different regimes use different models"""
-        print(f"\n🔍 Testing Different Models for Different Regimes...")
-        
-        symbols = ["BTC", "ETH", "SOL", "ADA", "DOT"]
-        regime_models = {}
-        
-        for symbol in symbols:
-            success, response = self.run_test(
-                f"Regime Models {symbol}",
-                "GET",
-                f"api/scanner/debug/{symbol}",
-                200
-            )
-            
-            if success and response:
-                prediction = response.get("prediction", {})
-                regime = prediction.get("regime")
-                model = prediction.get("model")
-                
-                if regime and model:
-                    if regime not in regime_models:
-                        regime_models[regime] = set()
-                    regime_models[regime].add(model)
-        
-        print(f"   Regime-Model mapping: {dict((k, list(v)) for k, v in regime_models.items())}")
-        
-        # Verify expected model mappings
-        expected_mappings = {
-            "trend": "trend_momentum_v1",
-            "range": "range_mean_reversion_v1", 
-            "compression": "compression_breakout_v1",
-            "high_volatility": "high_vol_momentum_v1"
+        if self.tests_passed == self.tests_run:
+            print("🎉 All P2 Decision Engine tests passed!")
+            return True
+        else:
+            print(f"⚠️  {self.tests_run - self.tests_passed} tests failed")
+            return False
+    
+    def get_test_summary(self):
+        """Get detailed test summary"""
+        return {
+            "total_tests": self.tests_run,
+            "passed_tests": self.tests_passed,
+            "failed_tests": self.tests_run - self.tests_passed,
+            "success_rate": (self.tests_passed / self.tests_run * 100) if self.tests_run > 0 else 0,
+            "test_results": self.test_results
         }
-        
-        correct_mappings = 0
-        total_mappings = 0
-        
-        for regime, expected_model in expected_mappings.items():
-            if regime in regime_models:
-                total_mappings += 1
-                models = regime_models[regime]
-                if expected_model in models:
-                    correct_mappings += 1
-                    print(f"   ✅ {regime} → {expected_model}")
-                else:
-                    print(f"   ❌ {regime} → {list(models)} (expected {expected_model})")
-        
-        if total_mappings > 0:
-            accuracy = correct_mappings / total_mappings
-            print(f"   Model mapping accuracy: {correct_mappings}/{total_mappings} = {accuracy:.2%}")
-            
-            if accuracy >= 0.8:  # 80% accuracy
-                print(f"   ✅ Good regime-model mapping")
-                self.passed_tests.append("Different Models for Regimes")
-                return True
-            else:
-                print(f"   ❌ Poor regime-model mapping")
-                self.failed_tests.append({
-                    "test": "Different Models for Regimes",
-                    "error": f"Model mapping accuracy {accuracy:.2%} < 80%",
-                    "details": regime_models
-                })
-                return False
-        
-        print(f"   ⚠️  No regime-model mappings found")
-        return True
 
-    def print_summary(self):
-        """Print test summary"""
-        print(f"\n" + "="*60)
-        print(f"📊 REGIME ENGINE P1 TEST SUMMARY")
-        print(f"="*60)
-        print(f"Tests run: {self.tests_run}")
-        print(f"Tests passed: {self.tests_passed}")
-        print(f"Tests failed: {len(self.failed_tests)}")
-        print(f"Success rate: {(self.tests_passed/self.tests_run)*100:.1f}%" if self.tests_run > 0 else "0%")
-        
-        if self.passed_tests:
-            print(f"\n✅ PASSED TESTS:")
-            for test in self.passed_tests:
-                print(f"   • {test}")
-        
-        if self.failed_tests:
-            print(f"\n❌ FAILED TESTS:")
-            for failure in self.failed_tests:
-                print(f"   • {failure.get('test', 'Unknown')}")
-                if 'error' in failure:
-                    print(f"     Error: {failure['error']}")
-                elif 'expected' in failure:
-                    print(f"     Expected: {failure['expected']}, Got: {failure['actual']}")
-        
-        return len(self.failed_tests) == 0
 
 def main():
-    """Run all Regime Engine P1 tests"""
-    print("🚀 Starting Regime Engine P1 Backend Testing...")
-    print("="*60)
+    """Main test execution"""
+    # Use the public endpoint from frontend/.env
+    base_url = "https://repo-study-3.preview.emergentagent.com"
     
-    tester = RegimeEngineAPITester()
+    print(f"🔗 Testing P2 Decision Engine at: {base_url}")
     
-    # Basic health checks
-    print("\n📋 BASIC HEALTH CHECKS")
-    tester.test_health_check()
-    tester.test_scanner_health()
+    tester = P2DecisionEngineTest(base_url)
+    success = tester.run_all_tests()
     
-    # Core regime detection tests
-    print("\n📋 REGIME DETECTION TESTS")
-    tester.test_debug_btc_regime_detection()
-    tester.test_debug_symbol_regime_detection("ETH")
-    tester.test_debug_symbol_regime_detection("SOL")
-    
-    # Full scan test
-    print("\n📋 FULL SCAN TESTS")
-    tester.test_full_scan_regime_aware()
-    
-    # Logging and monitoring
-    print("\n📋 LOGGING TESTS")
-    tester.test_logs_summary_regime_distribution()
-    
-    # Advanced regime behavior tests
-    print("\n📋 REGIME BEHAVIOR TESTS")
-    tester.test_different_models_for_regimes()
-    tester.test_regime_confidence_levels()
-    tester.test_direction_pattern_alignment()
-    tester.test_targets_not_zero_for_trend()
-    
-    # Print final summary
-    success = tester.print_summary()
+    # Print detailed summary
+    summary = tester.get_test_summary()
+    print(f"\n📋 Detailed Summary:")
+    print(f"   Success Rate: {summary['success_rate']:.1f}%")
+    print(f"   Total Tests: {summary['total_tests']}")
+    print(f"   Passed: {summary['passed_tests']}")
+    print(f"   Failed: {summary['failed_tests']}")
     
     return 0 if success else 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -168,7 +168,8 @@ class PredictionScanWorker:
     def get_latest_predictions_batch(
         self, 
         limit: int = 50,
-        publishable_only: bool = False
+        publishable_only: bool = False,
+        valid_only: bool = False
     ) -> list:
         """
         Get latest predictions across all assets.
@@ -176,6 +177,7 @@ class PredictionScanWorker:
         Args:
             limit: Maximum number to return
             publishable_only: Only return publishable predictions
+            valid_only: Only return predictions that passed P2 filter
         
         Returns:
             List of prediction snapshots
@@ -187,6 +189,8 @@ class PredictionScanWorker:
             query = {"latest": True}
             if publishable_only:
                 query["publishable"] = True
+            if valid_only:
+                query["prediction_payload.valid"] = True
             
             cursor = self.db.prediction_snapshots.find(
                 query,
@@ -198,10 +202,11 @@ class PredictionScanWorker:
             return []
     
     def get_top_predictions(self, limit: int = 20) -> list:
-        """Get top ranked publishable predictions."""
+        """Get top ranked valid predictions (Decision Engine filtered)."""
         return self.get_latest_predictions_batch(
             limit=limit,
-            publishable_only=True
+            publishable_only=True,
+            valid_only=True
         )
 
 
