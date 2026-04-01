@@ -1,115 +1,125 @@
-# TA Engine — Chart Integration & Analysis Platform
+# TA Engine — Prediction Engine Implementation
 
 ## Original Problem Statement
-Підніми даний проєкт і вивчи його архітектуру, клонуй собі репозиторій (https://github.com/solyankastayl-cyber/675675hfg6), а також далі продовж виконання незакінченого таску.
+Реалізувати чистий TA-based Prediction Engine без залежності від Exchange/Sentiment/Fractal як ядра.
 
-## Project Architecture
-- **Frontend**: React.js + TailwindCSS + Styled Components + Lightweight Charts (TradingView)
-- **Backend**: FastAPI (Python) on port 8001
-- **Database**: MongoDB
-- **Key Routes**: `/tech-analysis` → TechAnalysisModule with 7 tabs
+## Architecture
 
-### Tech Stack Details
-- React 19.0.0
-- Lightweight Charts 5.1.0
-- Zustand for state management
-- Styled Components for styling
-- FastAPI with async support
-- MongoDB with Motor driver
-
-## User Personas
-1. **Traders** - Need clear technical analysis, pattern detection, entry/exit signals
-2. **Analysts** - Need deep dive into market structure, confluence, indicators
-3. **Researchers** - Need access to raw metrics, narratives, historical data
-
-## Core Requirements (Static)
-- Chart with timeframe switching (4H, 1D, 7D, 1M, 6M, 1Y)
-- Long timeframes show full period (fitContent)
-- Short timeframes show detailed recent view (~60-90 candles)
-- Pattern detection (Double Bottom, Symmetrical Triangle, etc.)
-- 7 Analysis tabs: Research, Structure, Signals, Execution, Deep, Hypotheses, Ideas
-- 10-Layer Market Analysis
-- Overlay controls (Fibonacci, Pattern, Setup, TA)
-- Ideas tracking with accuracy, evolution, replay
-
-## What's Been Implemented
-
-### April 1, 2026 - Project Setup (Current Session)
-- Cloned repository from GitHub
-- Installed missing dependencies (zustand, react-force-graph-2d)
-- Verified backend health endpoints working
-- Verified frontend compiles and loads correctly
-- Confirmed all 7 tabs functional
-- Chart rendering with pattern detection working
-
-### Previous Sessions (March 30-31, 2026)
-- Fixed Chart Timeframe Zoom Logic
-- UI Improvements (Fibonacci panel, TA Explorer redesign)
-- Text Formatting Fix (underscore replacement)
-- Ideas Mode Layout Fix
-- WebSocket for real-time updates
-- User zoom preferences saved to localStorage
-- Timeframe transition animations
-- Real Pattern Renderer with boundaries
-
-## Testing Status
-- ✅ Backend: 100% (health endpoint verified)
-- ✅ Frontend: 100% (compiles with only lint warnings)
-- ✅ Pattern Rendering: Working (Symmetrical Triangle visible)
-- ✅ Real Boundaries: Working
-- ⚠️ Anchor Points: 0% (API compatibility issue, non-blocking)
-
-## Prioritized Backlog
-
-### P0 (Completed)
-- ✅ Chart zoom logic for all timeframes
-- ✅ All 7 tabs functional
-- ✅ Ideas mode layout fixes
-- ✅ Real Pattern Renderer
-- ✅ Project deployed and running
-
-### P1 (To Do)
-- [ ] Anchor points markers (setMarkers API compatibility)
-- [ ] Keyboard shortcuts for timeframe switching
-
-### P2 (Medium Priority)
-- [ ] Mobile responsive improvements
-- [ ] Export/share functionality for charts
-
-### P3 (Low Priority)
-- [ ] Additional pattern types
-- [ ] Push notifications for idea status changes
-
-## API Endpoints
-- `GET /api/health` - System health check
-- `GET /api/ta/patterns` - Pattern registry
-- `POST /api/ta/analyze` - Run technical analysis
-- `GET /api/ta/ideas` - Get trading ideas
-- `POST /api/ta/ideas/seed` - Seed demo ideas
-- `DELETE /api/ta/ideas/{id}` - Remove idea
-- `WS /api/ws/market` - WebSocket for real-time updates
-
-## File Structure
+### Core Principle
 ```
-/app/
-├── backend/
-│   ├── server.py           # FastAPI application
-│   ├── modules/            # Business logic modules
-│   │   ├── data/          # Coinbase provider
-│   │   └── ta_engine/     # TA analysis engine
-│   └── core/              # Database & utilities
-├── frontend/
-│   ├── src/
-│   │   ├── modules/cockpit/   # TechAnalysisModule
-│   │   ├── components/        # Reusable UI components
-│   │   └── pages/             # Page components
-│   └── package.json
-└── memory/
-    └── PRD.md             # This file
+Prediction = f(TA Engine output)
 ```
+
+### Stack
+- **Backend**: Python FastAPI
+- **Prediction Module**: `/app/backend/modules/prediction/`
+
+## Implemented Features
+
+### April 1, 2026 - Prediction Engine V2/V3
+
+#### V2 - Base Prediction Engine
+Files:
+- `types.py` - PredictionInput, PredictionOutput, Scenario, PathPoint
+- `direction.py` - Direction calculation from TA signals
+- `confidence.py` - Confidence scoring
+- `scenarios.py` - Bull/Base/Bear scenario builder
+- `path_builder.py` - Curved paths with ease-out + confidence bands
+- `ta_interpreter.py` - Bridge from TA Engine output
+- `prediction_engine.py` - Main V2 engine
+
+Features:
+- Direction: bullish/bearish/neutral with score (-1 to 1)
+- 3 Scenarios: bull (55%), base (30%), bear (15%) based on direction
+- Curved paths (ease-out quadratic)
+- Confidence bands (wider over time + volatility)
+- Reasoning list for transparency
+
+#### V3 - Advanced Prediction Engine
+File: `prediction_engine_v3.py`
+
+Features:
+- **Drift Detection**: Minor (2%), Major (5%), Critical (10%)
+- **Self-Correction**: Learning from historical accuracy
+- **Version History**: Track V1 → V2 → V3 transitions
+- **Path Noise**: Realistic random walk
+- **Outcome Recording**: Update correction factors
+
+### API Endpoints
+
+```
+GET  /api/prediction/health
+GET  /api/prediction/{symbol}           # V2 prediction
+POST /api/prediction/{symbol}           # V2 with JSON body
+GET  /api/prediction/{symbol}/scenarios
+GET  /api/prediction/v3/{symbol}        # V3 prediction
+POST /api/prediction/v3/{symbol}/drift  # Check/update drift
+GET  /api/prediction/v3/{symbol}/history
+```
+
+## Direction Calculation
+
+Weights:
+- Pattern: 40%
+- Structure: 30%
+- Momentum: 30%
+
+Thresholds:
+- Bullish: score > 0.2
+- Bearish: score < -0.2
+- Neutral: otherwise
+
+## Scenario Probabilities
+
+Based on direction score:
+- Strong bullish (>0.3): 55% bull, 30% base, 15% bear
+- Moderate bullish: 45% bull, 35% base, 20% bear
+- Neutral: 33% each
+- Moderate bearish: 20% bull, 35% base, 45% bear
+- Strong bearish (<-0.3): 15% bull, 30% base, 55% bear
+
+## Path Generation
+
+```python
+# Ease-out quadratic curve
+curve = 1 - (1 - t)^2
+
+# Band spread
+spread = price × volatility × 0.5 × time_factor
+```
+
+## What's NOT in Prediction Engine
+
+❌ Exchange Intelligence as core
+❌ Sentiment/Reflexivity as core
+❌ Fractal Intelligence as core
+
+These are OPTIONAL modifiers only.
 
 ## Next Tasks
-1. Implement anchor points markers (investigate setMarkers API)
-2. Add keyboard shortcuts (1-6 for timeframes, P for pattern toggle)
-3. Consider mobile responsive improvements
-4. Add export/sharing functionality
+
+### P1 (To Do)
+- [ ] Connect Prediction Engine to frontend chart
+- [ ] Display prediction overlay on TechAnalysis page
+- [ ] Add prediction toggle in chart controls
+
+### P2 (Enhancement)
+- [ ] Add optional Exchange/Fractal modifiers (+/- 8% confidence)
+- [ ] Backtest validation module
+- [ ] Accuracy tracking dashboard
+
+## File Structure
+
+```
+/app/backend/modules/prediction/
+├── __init__.py
+├── types.py              # Data structures
+├── direction.py          # Direction calculator
+├── confidence.py         # Confidence scorer
+├── scenarios.py          # Scenario builder
+├── path_builder.py       # Path + bands
+├── ta_interpreter.py     # TA → Input bridge
+├── prediction_engine.py  # V2 engine
+├── prediction_engine_v3.py # V3 with drift
+└── routes.py             # API endpoints
+```

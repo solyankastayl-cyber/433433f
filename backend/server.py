@@ -417,6 +417,14 @@ try:
 except Exception as e:
     print(f"[Routes] Circuit Breaker not available: {e}")
 
+# Prediction Engine V2 Routes
+try:
+    from modules.prediction.routes import router as prediction_router
+    app.include_router(prediction_router)
+    print("[Routes] Prediction Engine V2 router registered")
+except Exception as e:
+    print(f"[Routes] Prediction Engine not available: {e}")
+
 
 # ============================================
 # Coinbase Provider Live Data Endpoints
