@@ -348,17 +348,24 @@ def _extract_indicators_from_ta(ta: Dict) -> Dict[str, Any]:
     return result
 
 
-def build_real_prediction(ta_payload: Dict[str, Any], prev_regime: Optional[str] = None) -> Dict[str, Any]:
+def build_real_prediction(
+    ta_payload: Dict[str, Any],
+    prev_regime: Optional[str] = None,
+    db = None
+) -> Dict[str, Any]:
     """
-    Build real prediction from TA payload using regime-aware routing + P2 Decision Engine.
+    Build real prediction from TA payload using full Decision Engine pipeline.
     
-    Pipeline:
+    Pipeline (P3/P4/P5):
     1. Build regime-aware base prediction
-    2. Apply P2 finalizer (stability, calibration, anti-overconfidence, filter, ranking)
+    2. Apply P4 calibration (if available)
+    3. Apply P5 stability (if available)
+    4. Apply P2 finalizer (stability score, anti-overconfidence, filter, ranking)
     
     Args:
         ta_payload: Output from build_real_ta()
         prev_regime: Previous regime for hysteresis (optional)
+        db: MongoDB database (optional, for calibration/stability loading)
     
     Returns:
         Finalized prediction payload with stability, valid, score fields
@@ -372,7 +379,6 @@ def build_real_prediction(ta_payload: Dict[str, Any], prev_regime: Optional[str]
         return _fallback_prediction(ta_payload)
     
     try:
-        # USE REGIME-AWARE PREDICTION ENGINE
         from modules.prediction.prediction_engine_v3 import build_prediction_regime_aware
         from modules.prediction.finalizer import finalize_prediction
         
@@ -389,13 +395,36 @@ def build_real_prediction(ta_payload: Dict[str, Any], prev_regime: Optional[str]
         # 1. Run regime-aware prediction
         base_result = build_prediction_regime_aware(pred_input, prev_regime)
         
-        # 2. Apply P2 Decision Engine pipeline
+        # 2. Apply P4 calibration (if db available and calibration exists)
+        if db:
+            try:
+                from modules.prediction.calibration_repository import load_calibration, apply_calibration
+                calibration = load_calibration(db)
+                if calibration.get("regime_weights"):
+                    base_result = apply_calibration(base_result, calibration)
+            except Exception as cal_err:
+                print(f"[Prediction Adapter] Calibration error: {cal_err}")
+        
+        # 3. Apply P5 stability (if db available and stability exists)
+        if db:
+            try:
+                from modules.prediction.stability_repository import load_stability, apply_stability
+                stability_doc = load_stability(db)
+                if stability_doc.get("model_health"):
+                    base_result = apply_stability(base_result, stability_doc)
+            except Exception as stab_err:
+                print(f"[Prediction Adapter] Stability error: {stab_err}")
+        
+        # 4. Apply P2 Decision Engine pipeline (final)
         result = finalize_prediction(pred_input, base_result)
         
         # Add meta info
         result["_ta_source"] = ta_payload.get("_ta_source", "unknown")
         result["_ta_pattern"] = ta_payload.get("pattern", {}).get("type", "none")
         result["_ta_regime"] = ta_payload.get("_ta_layers_regime", "unknown")
+        
+        # Add horizon for outcome tracking
+        result["horizon_days"] = 5  # Default 5 days
         
         # LOG for monitoring
         try:

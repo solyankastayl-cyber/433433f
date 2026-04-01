@@ -70,6 +70,11 @@ class PredictionScanWorker:
             # Extract score and publishable from payload
             score = prediction_payload.get("score", 0)
             publishable = prediction_payload.get("publishable", False)
+            valid = prediction_payload.get("valid", False)
+            
+            # Extract regime/model for P3/P4/P5 tracking
+            regime = prediction_payload.get("regime", "unknown")
+            model = prediction_payload.get("model", "unknown")
             
             # Insert new snapshot
             self.db.prediction_snapshots.insert_one({
@@ -78,9 +83,16 @@ class PredictionScanWorker:
                 "created_at": int(time.time()),
                 "latest": True,
                 "prediction_payload": prediction_payload,
+                # P3: Outcome tracking fields
                 "status": "pending",
+                "resolution": None,
+                # P4/P5: Regime and model for calibration
+                "regime": regime,
+                "model": model,
+                # Ranking
                 "score": score,
                 "publishable": publishable,
+                "valid": valid,
             })
             return True
         except Exception as e:

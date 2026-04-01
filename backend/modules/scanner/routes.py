@@ -309,6 +309,184 @@ async def clear_logs():
     return clear_logs()
 
 
+# ══════════════════════════════════════════════════════════════
+# P3: OUTCOME TRACKING & METRICS
+# ══════════════════════════════════════════════════════════════
+
+@router.post("/outcomes/resolve")
+async def run_outcome_resolution():
+    """Run outcome resolution worker to resolve pending predictions."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from workers.prediction_outcome_worker import run_prediction_outcome_worker, create_price_provider
+    
+    price_provider = create_price_provider(db)
+    result = run_prediction_outcome_worker(db, price_provider)
+    
+    return {
+        "status": "complete",
+        "stats": result
+    }
+
+
+@router.get("/metrics")
+async def get_prediction_metrics():
+    """Get global prediction metrics."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.metrics_engine import get_latest_metrics_snapshot
+    
+    snapshot = get_latest_metrics_snapshot(db)
+    return snapshot or {"status": "no_metrics_yet"}
+
+
+@router.get("/metrics/by-regime")
+async def get_metrics_by_regime():
+    """Get prediction metrics grouped by regime."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.metrics_engine import get_metrics_by_regime
+    
+    return get_metrics_by_regime(db)
+
+
+@router.get("/metrics/by-model")
+async def get_metrics_by_model():
+    """Get prediction metrics grouped by model."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.metrics_engine import get_metrics_by_model
+    
+    return get_metrics_by_model(db)
+
+
+@router.post("/metrics/compute")
+async def compute_metrics_snapshot():
+    """Compute and store new metrics snapshot."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from workers.prediction_metrics_worker import run_prediction_metrics_worker
+    
+    snapshot = run_prediction_metrics_worker(db)
+    return {
+        "status": "computed",
+        "global": snapshot.get("global", {})
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# P4: CALIBRATION
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/calibration/status")
+async def get_calibration_status():
+    """Get current calibration status."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.calibration_engine_v2 import get_calibration_status
+    
+    return get_calibration_status(db)
+
+
+@router.post("/calibration/recalibrate")
+async def run_recalibration():
+    """Run recalibration based on resolved outcomes."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from workers.prediction_calibration_worker import run_prediction_calibration_worker
+    
+    result = run_prediction_calibration_worker(db)
+    return {
+        "status": "recalibrated",
+        "regime_weights": result.get("regime_weights", {}),
+        "model_weights": result.get("model_weights", {})
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+# P5: STABILITY & ANTI-DRIFT
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/stability/status")
+async def get_stability_status():
+    """Get current stability status."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.stability_engine import get_stability_status
+    
+    return get_stability_status(db)
+
+
+@router.get("/stability/models")
+async def get_model_health():
+    """Get model health status and penalties."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from modules.prediction.stability_engine import get_stability_status
+    
+    doc = get_stability_status(db)
+    return {
+        "model_health": doc.get("model_health", {}),
+        "model_penalties": doc.get("model_penalties", {}),
+        "regime_instability": doc.get("regime_instability", {})
+    }
+
+
+@router.post("/stability/rebuild")
+async def rebuild_stability():
+    """Rebuild stability document."""
+    from pymongo import MongoClient
+    import os
+    
+    client = MongoClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    db = client[os.environ.get("DB_NAME", "test_database")]
+    
+    from workers.prediction_stability_worker import run_prediction_stability_worker
+    
+    result = run_prediction_stability_worker(db)
+    return {
+        "status": "rebuilt",
+        "model_health": result.get("model_health", {}),
+        "calibration_guard": result.get("calibration_guard", {})
+    }
+
+
 def register_routes(app):
     """Register scanner routes with FastAPI app."""
     app.include_router(router)
