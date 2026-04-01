@@ -1,178 +1,147 @@
-# TA Engine — Prediction Engine with Validation Layer
+# TA Engine — Scanner Engine Implementation
 
 ## Original Problem Statement
-Реалізувати Validation Layer для Prediction Engine:
-- Debug endpoint
-- Prediction repository (зберігання в MongoDB)
-- Evaluation Engine (оцінка predictions)
-- Metrics Engine (accuracy, error %)
-- Sanity Checks
-- Calibration Engine (адаптивні ваги)
+Реалізувати Scanning Engine для масштабування Prediction Engine на 100+ активів.
 
 ## Architecture
 
 ### Pipeline
 ```
-TA Engine
+Asset Registry (top 50/100/300)
     ↓
-Prediction Engine (V2/V3)
+Scan Planner → creates jobs
     ↓
-Sanity Check
+Job Queue (MongoDB-based)
     ↓
-Save to MongoDB
+Workers
+    ├─ TA Worker → saves ta_snapshots
+    ├─ Prediction Worker → saves prediction_snapshots
+    └─ Evaluation Worker
     ↓
-Worker (cron) - evaluates when horizon passes
+Ranking → score + publishability filter
     ↓
-Evaluation
-    ↓
-Metrics + Calibration
+API → /predictions/latest, /predictions/top
 ```
 
 ### Core Principle
 ```
-Prediction = f(TA Engine output)
+NOT per-request, but continuous scanning system
+Asset Universe → Queue → TA → Prediction → Save → Evaluate → Rank
 ```
 
 ## Implemented Modules
 
-### Prediction Engine
-- `prediction_engine.py` - V2 базовий engine
-- `prediction_engine_v3.py` - V3 з drift/self-correction
-- `direction.py` - Direction calculator
-- `confidence.py` - Confidence scorer
-- `scenarios.py` - Bull/Base/Bear scenarios
-- `path_builder.py` - Curved paths + bands
-- `ta_interpreter.py` - TA → Input bridge
+### Scanner Engine (`/app/backend/modules/scanner/`)
 
-### Validation Layer
-- `prediction_repository.py` - MongoDB storage
-- `prediction_evaluator.py` - Evaluation logic
-- `prediction_metrics.py` - Accuracy metrics
-- `prediction_sanity.py` - Sanity checks
-- `calibration_engine.py` - Adaptive weights
-- `prediction_worker.py` - Background worker
+| File | Purpose |
+|------|---------|
+| `types.py` | ScanJob, AssetRegistryItem, TASnapshot, PredictionSnapshot |
+| `asset_registry.py` | Manages asset universe (top 50 crypto seeded) |
+| `job_queue.py` | MongoDB-based job queue with claim/done/fail |
+| `scan_planner.py` | Creates ta_scan + prediction_build jobs |
+| `ta_worker.py` | Processes ta_scan jobs → saves ta_snapshots |
+| `prediction_scan_worker.py` | Processes prediction_build jobs → saves prediction_snapshots |
+| `ranking.py` | Score formula + publishability filter |
+| `scheduler.py` | Orchestrates batch processing |
+| `routes.py` | REST API endpoints |
+| `dummy_builders.py` | Placeholder TA/Prediction builders |
 
 ## API Endpoints
 
-### Prediction
+### Assets
 ```
-GET  /api/prediction/health
-GET  /api/prediction/{symbol}          # V2 prediction
-POST /api/prediction/{symbol}          # V2 with JSON
-GET  /api/prediction/v3/{symbol}       # V3 with drift
-POST /api/prediction/v3/{symbol}/drift # Check drift
-GET  /api/prediction/v3/{symbol}/history
+GET  /api/scanner/assets           # List active assets
+POST /api/scanner/assets/seed      # Seed top 50 crypto
+GET  /api/scanner/assets/stats     # Registry stats
 ```
 
-### Validation & Debug
+### Queue
 ```
-GET  /api/prediction/debug/{symbol}    # Full breakdown
-POST /api/prediction/save/{symbol}     # Save for validation
-GET  /api/prediction/pending           # Awaiting evaluation
-POST /api/prediction/evaluate/{id}     # Manual evaluate
-```
-
-### Metrics & Calibration
-```
-GET  /api/prediction/metrics           # Accuracy stats
-GET  /api/prediction/calibration/status
-POST /api/prediction/calibration/run   # Trigger calibration
-POST /api/prediction/calibration/reset
-POST /api/prediction/worker/run        # Trigger worker
+GET  /api/scanner/queue/stats      # Queue statistics
+GET  /api/scanner/queue/pending    # Pending jobs
+POST /api/scanner/queue/cleanup    # Clean stale jobs
 ```
 
-## Evaluation Logic
+### Scanning
+```
+POST /api/scanner/scan/universe    # Enqueue universe scan
+POST /api/scanner/scan/asset/{sym} # Scan single asset
+POST /api/scanner/tick             # Manual scheduler tick
+POST /api/scanner/full-scan        # Full universe scan
+GET  /api/scanner/status           # Scheduler status
+```
 
-Results:
-- **correct**: Direction correct AND error < 3%
-- **partial**: Direction correct BUT error 3-10%
-- **wrong**: Direction wrong
+### Predictions
+```
+GET  /api/scanner/predictions/latest  # Latest snapshots
+GET  /api/scanner/predictions/top     # Top ranked publishable
+```
 
-## Calibration Logic
+## Ranking Formula
 
-Weights update formula:
 ```python
-score[factor] = correct_weighted_contribution / total_contribution
-new_weight[factor] = clamp(score / sum(scores), 0.1, 0.7)
+score = confidence * 0.5 + |expected_return| * 2.5 + |direction_score| * 0.2
 ```
 
-Minimum 50 predictions required.
+## Publishability Thresholds
 
-## Metrics Tracked
-
-- `accuracy` - % correct
-- `accuracy_with_partial` - (correct + 0.5*partial) / total
-- `direction_accuracy` - % correct direction
-- `avg_error_pct` - Average price error
-- `bias.skew` - Bull vs Bear accuracy difference
-- `calibration` - Expected vs Actual by confidence level
-- `contribution_performance` - Performance per factor
+- `confidence >= 0.55`
+- `|expected_return| >= 0.02` (2%)
 
 ## MongoDB Collections
 
-### predictions
-```json
-{
-  "symbol": "BTC",
-  "timeframe": "1D",
-  "created_at": 1712000000,
-  "price_at_prediction": 68000,
-  "prediction": {...},
-  "contributions": {...},
-  "status": "pending|resolved|expired",
-  "evaluation": {...}
-}
-```
+| Collection | Purpose |
+|------------|---------|
+| `asset_registry` | Active assets with volume_rank |
+| `scan_jobs` | Job queue with status |
+| `ta_snapshots` | TA analysis snapshots |
+| `prediction_snapshots` | Prediction snapshots with score |
 
-### prediction_weights
-```json
-{
-  "_id": "default",
-  "weights": {"pattern": 0.4, "structure": 0.3, "momentum": 0.3},
-  "performance_scores": {...},
-  "last_calibration": "..."
-}
-```
+## Batch Processing Intervals
+
+| Timeframe | Scan Interval |
+|-----------|---------------|
+| 4H | Every 10 minutes |
+| 1D | Every 30 minutes |
+| Cleanup | Every 1 hour |
 
 ## Testing Status
-- ✅ Debug endpoint working
-- ✅ Save prediction working
-- ✅ Pending list working
-- ✅ Manual evaluate working
-- ✅ Metrics calculation working
-- ✅ Calibration status working
-- ⏳ Auto-evaluation worker (needs cron setup)
+
+- ✅ Asset registry seeding: 50 crypto assets
+- ✅ Full scan: 10 assets × 2 TF = 20 TA + 20 predictions
+- ✅ Top predictions API: Returns ranked publishable signals
+- ✅ Queue stats working
+- ⏳ Real TA integration (using dummy builders now)
 
 ## Next Steps
 
 ### P1 (Immediate)
-- [ ] Set up cron for prediction worker
-- [ ] Create 50+ predictions for calibration test
-- [ ] Dry run: BTC/ETH/SOL 100 predictions
+- [ ] Connect real TA Engine to ta_worker
+- [ ] Connect real Prediction Engine to prediction_worker
+- [ ] Set up cron for scheduler.tick()
 
-### P2 (After Validation)
-- [ ] Connect to frontend chart
-- [ ] Display prediction overlay
-- [ ] Add prediction toggle in UI
+### P2 (After Real Integration)
+- [ ] Scale to 100 assets
+- [ ] Add evaluation worker
+- [ ] Build metrics dashboard
 
-## Files Created
+### P3 (Advanced)
+- [ ] Regime-based models (trend/range/compression)
+- [ ] Scale to 300+ assets
+
+## File Structure
 
 ```
-/app/backend/modules/prediction/
+/app/backend/modules/scanner/
 ├── __init__.py
 ├── types.py
-├── direction.py
-├── confidence.py
-├── scenarios.py
-├── path_builder.py
-├── ta_interpreter.py
-├── prediction_engine.py
-├── prediction_engine_v3.py
-├── prediction_repository.py
-├── prediction_evaluator.py
-├── prediction_metrics.py
-├── prediction_sanity.py
-├── calibration_engine.py
-├── prediction_worker.py
-└── routes.py
+├── asset_registry.py
+├── job_queue.py
+├── scan_planner.py
+├── ta_worker.py
+├── prediction_scan_worker.py
+├── ranking.py
+├── scheduler.py
+├── routes.py
+└── dummy_builders.py
 ```

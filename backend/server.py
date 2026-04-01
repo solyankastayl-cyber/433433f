@@ -425,6 +425,14 @@ try:
 except Exception as e:
     print(f"[Routes] Prediction Engine not available: {e}")
 
+# Scanner Engine Routes
+try:
+    from modules.scanner.routes import router as scanner_router
+    app.include_router(scanner_router)
+    print("[Routes] Scanner Engine router registered")
+except Exception as e:
+    print(f"[Routes] Scanner Engine not available: {e}")
+
 
 # ============================================
 # Coinbase Provider Live Data Endpoints
