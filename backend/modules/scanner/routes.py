@@ -170,6 +170,49 @@ async def get_top_predictions(limit: int = 20):
 
 
 # ══════════════════════════════════════════════════════════════
+# DEBUG / SINGLE ASSET SCAN
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/debug/{symbol}")
+async def debug_single_asset(
+    symbol: str,
+    timeframe: str = "4H",
+):
+    """
+    Debug: run real TA + Prediction for a single asset.
+    
+    Returns full pipeline output for manual verification.
+    Shows: candle count, pattern, structure, indicators, prediction.
+    """
+    from .ta_to_prediction_adapter import build_real_ta, build_real_prediction
+    
+    # Run TA
+    ta_payload = build_real_ta(symbol.upper(), timeframe.upper())
+    
+    # Run Prediction
+    prediction = build_real_prediction(ta_payload)
+    
+    # Enrich with score
+    from .ranking import enrich_prediction_with_score
+    enriched = enrich_prediction_with_score(prediction)
+    
+    return {
+        "symbol": symbol.upper(),
+        "timeframe": timeframe.upper(),
+        "ta_summary": {
+            "price": ta_payload.get("price"),
+            "pattern": ta_payload.get("pattern"),
+            "structure": ta_payload.get("structure"),
+            "indicators": ta_payload.get("indicators"),
+            "ta_source": ta_payload.get("_ta_source"),
+            "ta_regime": ta_payload.get("_ta_layers_regime"),
+            "error": ta_payload.get("_error"),
+        },
+        "prediction": enriched,
+    }
+
+
+# ══════════════════════════════════════════════════════════════
 # SCHEDULER
 # ══════════════════════════════════════════════════════════════
 
@@ -185,14 +228,14 @@ async def trigger_tick(asset_limit: int = 50):
     """
     Manually trigger scheduler tick.
     
-    Note: In production, this runs automatically.
+    Uses REAL TA Engine + Prediction Engine.
     """
-    from .dummy_builders import build_dummy_ta, build_dummy_prediction
+    from .ta_to_prediction_adapter import build_real_ta, build_real_prediction
     
     scheduler = get_scanner_scheduler()
     result = scheduler.tick(
-        build_ta_fn=build_dummy_ta,
-        build_prediction_fn=build_dummy_prediction,
+        build_ta_fn=build_real_ta,
+        build_prediction_fn=build_real_prediction,
         asset_limit=asset_limit,
     )
     
@@ -207,14 +250,14 @@ async def trigger_full_scan(
     """
     Trigger a full scan of the universe.
     
-    Use for initial population or manual refresh.
+    Uses REAL TA Engine + Prediction Engine.
     """
-    from .dummy_builders import build_dummy_ta, build_dummy_prediction
+    from .ta_to_prediction_adapter import build_real_ta, build_real_prediction
     
     scheduler = get_scanner_scheduler()
     result = scheduler.run_full_scan(
-        build_ta_fn=build_dummy_ta,
-        build_prediction_fn=build_dummy_prediction,
+        build_ta_fn=build_real_ta,
+        build_prediction_fn=build_real_prediction,
         asset_limit=asset_limit,
         timeframes=timeframes,
     )
